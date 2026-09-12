@@ -96,3 +96,32 @@ Preserva:
 - facções
 - permissões
 - configurações
+
+V19 — COMÉRCIO VINCULADO À PESSOA
+- Duty / Arsenal, Ecologistas / Aquisições, Bandidos / Negócios e Freedom / Suprimentos ganharam sistema próprio de compra/venda/recompensa.
+- Ao selecionar a pessoa cadastrada, a tela mostra foto, nome, codinome, reputação e saldo pessoal em RU.
+- Modos: RU + reputação, somente RU ou somente reputação.
+- Facção compra da pessoa: personagem recebe RU e/ou reputação; o Caixa da facção registra uma saída.
+- Facção vende para a pessoa: personagem paga RU e pode ganhar reputação; o Caixa registra uma entrada.
+- Recompensa/entrega RP: personagem recebe RU e/ou reputação.
+- Histórico comercial mostra saldo/reputação após cada operação.
+- Somente Super Admin pode estornar/excluir; o estorno reverte saldo, reputação e lançamento do Caixa.
+- Mercenários não receberam esse módulo porque seu fluxo atual é de contratos/serviços, não de mercadoria.
+
+V20 — CALENDÁRIO GLOBAL + BANCO GERAL
+
+CALENDÁRIO
+- Corrigido nas páginas bancárias de Duty, Ecologistas, Bandidos e Freedom.
+- Reforçado no Caixa dos Mercenários/legado.
+- Datas anteriores ao dia atual são bloqueadas no navegador e no backend.
+- Backend usa APP_TIMEZONE; padrão America/Maceio, evitando problemas de UTC.
+
+BANCO GERAL
+- Nova aba Banco Geral em Duty, Ecologistas, Bandidos, Freedom e Mercenários.
+- Reserva independente do Caixa/Tesouraria operacional.
+- Todos podem consultar conforme acesso à facção.
+- Somente Faction Admin da própria facção e Super Admin no contexto selecionado podem adicionar/retirar dinheiro.
+- Retirada sem saldo suficiente é recusada.
+- Datas passadas são recusadas.
+- Somente Super Admin pode excluir lançamentos.
+- Movimentações são registradas no Log de Auditoria.

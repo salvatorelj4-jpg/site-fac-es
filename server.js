@@ -175,6 +175,19 @@ async function initDb() {
                 )
             `);
 
+            await dbRun(`
+                CREATE TABLE IF NOT EXISTS faction_general_bank_transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    faction_id INTEGER NOT NULL REFERENCES factions(id),
+                    user_id INTEGER NOT NULL REFERENCES users(id),
+                    type TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    reason TEXT NOT NULL,
+                    transaction_date TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
+
             // Generic faction-specific RP records
             await dbRun(`CREATE TABLE IF NOT EXISTS faction_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -279,6 +292,26 @@ async function initDb() {
             await ensureColumn('stalkers', 'status_lista_negra', 'INTEGER DEFAULT 0');
             await ensureColumn('stalkers', 'motivo_lista_negra', 'TEXT');
             await ensureColumn('stalkers', 'faction_id', 'INTEGER DEFAULT 2');
+            await ensureColumn('stalkers', 'saldo_ru', 'REAL DEFAULT 0');
+
+            await dbRun(`CREATE TABLE IF NOT EXISTS commerce_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                faction_id INTEGER NOT NULL REFERENCES factions(id),
+                module_code TEXT NOT NULL,
+                person_id INTEGER NOT NULL REFERENCES stalkers(id),
+                operation_type TEXT NOT NULL,
+                merchandise TEXT NOT NULL,
+                quantity REAL DEFAULT 1,
+                money_delta REAL DEFAULT 0,
+                reputation_delta INTEGER DEFAULT 0,
+                person_balance_after REAL DEFAULT 0,
+                person_reputation_after INTEGER DEFAULT 0,
+                bank_transaction_id INTEGER,
+                notes TEXT DEFAULT '',
+                created_by INTEGER REFERENCES users(id),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
 
             // Seed Factions
             const factions = [
@@ -575,6 +608,30 @@ function requireFaction(...allowedCodes) {
 function getFactionScope(req) {
     if (req.user.role === 'super_admin') return req.query.faction_id ? parseInt(req.query.faction_id) : null;
     return req.user.factionId;
+}
+
+function getAppToday() {
+    const timeZone = process.env.APP_TIMEZONE || 'America/Maceio';
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).formatToParts(new Date());
+
+    const byType = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function isValidIsoDate(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
+    const [y, m, d] = String(value).split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+function canManageGeneralBank(req) {
+    return req.user.role === 'super_admin' || req.user.role === 'faction_admin';
 }
 
 // ==========================================
@@ -2488,6 +2545,327 @@ app.get('/api/stats', auth, async (req, res) => {
     });
 });
 
+
+// --- FACTION COMMERCE / PERSONAL WALLET ---
+const COMMERCE_MODULES = {
+    duty: ['arsenal'],
+    ecologists: ['trade'],
+    bandits: ['business'],
+    freedom: ['supplies']
+};
+
+async function resolveCommerceScope(req, moduleCode) {
+    const factionId = getFactionScope(req);
+    if (!factionId) return { error: 'Contexto de facção necessário.' };
+    const faction = await dbGet(`SELECT id, code, name FROM factions WHERE id=?`, [factionId]);
+    if (!faction) return { error: 'Facção não encontrada.' };
+    const allowed = COMMERCE_MODULES[faction.code] || [];
+    if (!allowed.includes(moduleCode)) {
+        return { error: `O módulo ${moduleCode} não é um módulo comercial da facção ${faction.name}.` };
+    }
+    return { factionId, faction };
+}
+
+app.get('/api/commerce/people', auth, async (req, res, next) => {
+    try {
+        const moduleCode = String(req.query.module || '').trim().toLowerCase();
+        const scope = await resolveCommerceScope(req, moduleCode);
+        if (scope.error) return res.status(403).json({ error: scope.error });
+
+        const rows = await dbAll(`
+            SELECT id,nome,codinome,faccao,foto,reputacao,COALESCE(saldo_ru,0) AS saldo_ru,area_atuacao
+            FROM stalkers
+            WHERE faction_id=?
+            ORDER BY codinome COLLATE NOCASE ASC, nome COLLATE NOCASE ASC`,
+            [scope.factionId]
+        );
+        res.json(rows);
+    } catch (e) { next(e); }
+});
+
+app.get('/api/commerce/transactions', auth, async (req, res, next) => {
+    try {
+        const moduleCode = String(req.query.module || '').trim().toLowerCase();
+        const scope = await resolveCommerceScope(req, moduleCode);
+        if (scope.error) return res.status(403).json({ error: scope.error });
+
+        const rows = await dbAll(`
+            SELECT ct.*, s.nome, s.codinome, s.foto, u.name AS created_by_name
+            FROM commerce_transactions ct
+            LEFT JOIN stalkers s ON s.id=ct.person_id
+            LEFT JOIN users u ON u.id=ct.created_by
+            WHERE ct.faction_id=? AND ct.module_code=?
+            ORDER BY ct.created_at DESC, ct.id DESC
+            LIMIT 250`, [scope.factionId, moduleCode]);
+        res.json(rows);
+    } catch (e) { next(e); }
+});
+
+app.post('/api/commerce/transactions', auth, async (req, res, next) => {
+    try {
+        if (!canWriteFactionRp(req)) {
+            return res.status(403).json({ error:'Seu cargo não pode registrar transações comerciais.' });
+        }
+
+        const schema = z.object({
+            module: z.string().trim().min(2).max(40),
+            personId: z.coerce.number().int().positive(),
+            operationType: z.enum(['FACCAO_COMPRA','FACCAO_VENDE','RECOMPENSA']),
+            merchandise: z.string().trim().min(2).max(160),
+            quantity: z.coerce.number().positive().max(100000).default(1),
+            money: z.coerce.number().min(0).max(100000000).default(0),
+            reputation: z.coerce.number().int().min(0).max(1000000).default(0),
+            notes: z.string().trim().max(2000).optional().default('')
+        });
+        const parsed=schema.safeParse(req.body);
+        if(!parsed.success) return res.status(400).json({error:'Dados da transação inválidos.'});
+        const d=parsed.data;
+        const moduleCode=d.module.toLowerCase();
+        const scope=await resolveCommerceScope(req,moduleCode);
+        if(scope.error) return res.status(403).json({error:scope.error});
+
+        if(d.money<=0 && d.reputation<=0){
+            return res.status(400).json({error:'Informe uma recompensa/valor em RU, reputação ou ambos.'});
+        }
+
+        const person=await dbGet(`
+            SELECT id,nome,codinome,reputacao,COALESCE(saldo_ru,0) AS saldo_ru
+            FROM stalkers WHERE id=? AND faction_id=?`, [d.personId,scope.factionId]);
+        if(!person) return res.status(404).json({error:'Pessoa não encontrada nesta facção.'});
+
+        const bankRow=await dbGet(`
+            SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount ELSE -amount END),0) AS balance
+            FROM faction_bank_transactions WHERE faction_id=?`,[scope.factionId]);
+        const factionBalance=Number(bankRow?.balance||0);
+        const personBalance=Number(person.saldo_ru||0);
+
+        let moneyDelta=0;
+        let bankType=null;
+        if(d.operationType==='FACCAO_COMPRA' || d.operationType==='RECOMPENSA'){
+            moneyDelta=d.money;
+            bankType=d.money>0?'saida':null;
+            if(d.money>factionBalance){
+                return res.status(400).json({error:`Saldo insuficiente da facção. Caixa atual: ${factionBalance.toFixed(2)} RU.`});
+            }
+        } else if(d.operationType==='FACCAO_VENDE'){
+            moneyDelta=-d.money;
+            bankType=d.money>0?'entrada':null;
+            if(d.money>personBalance){
+                return res.status(400).json({error:`Saldo insuficiente da pessoa. Saldo pessoal: ${personBalance.toFixed(2)} RU.`});
+            }
+        }
+
+        const nextBalance=personBalance+moneyDelta;
+        const nextRep=Number(person.reputacao||0)+d.reputation;
+        let bankTransactionId=null;
+        const today=new Date().toISOString().slice(0,10);
+
+        await dbRun('BEGIN IMMEDIATE TRANSACTION');
+        try{
+            await dbRun(`UPDATE stalkers SET saldo_ru=?, reputacao=? WHERE id=? AND faction_id=?`,
+                [nextBalance,nextRep,person.id,scope.factionId]);
+
+            if(bankType){
+                const reason=`${moduleCode.toUpperCase()} • ${d.operationType} • ${d.merchandise} • ${person.codinome||person.nome}`;
+                const bankResult=await dbRun(`
+                    INSERT INTO faction_bank_transactions (faction_id,user_id,type,amount,reason,transaction_date)
+                    VALUES (?,?,?,?,?,?)`,[scope.factionId,req.user.id,bankType,d.money,reason,today]);
+                bankTransactionId=bankResult.lastID;
+            }
+
+            const result=await dbRun(`
+                INSERT INTO commerce_transactions
+                (faction_id,module_code,person_id,operation_type,merchandise,quantity,money_delta,reputation_delta,person_balance_after,person_reputation_after,bank_transaction_id,notes,created_by)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                [scope.factionId,moduleCode,person.id,d.operationType,d.merchandise,d.quantity,moneyDelta,d.reputation,nextBalance,nextRep,bankTransactionId,d.notes,req.user.id]
+            );
+            await dbRun('COMMIT');
+
+            await auditLog({
+                userId:req.user.id,factionId:scope.factionId,action:'CREATE_COMMERCE_TRANSACTION',entity:moduleCode,entityId:result.lastID,
+                metadata:{personId:person.id,person:person.codinome||person.nome,operationType:d.operationType,merchandise:d.merchandise,quantity:d.quantity,moneyDelta,reputationDelta:d.reputation}
+            });
+
+            res.status(201).json({
+                success:true,id:result.lastID,
+                person:{id:person.id,nome:person.nome,codinome:person.codinome,saldo_ru:nextBalance,reputacao:nextRep},
+                factionBalance:factionBalance+(bankType==='entrada'?d.money:bankType==='saida'?-d.money:0)
+            });
+        }catch(e){
+            try{await dbRun('ROLLBACK')}catch(_){ }
+            throw e;
+        }
+    } catch(e){next(e)}
+});
+
+app.delete('/api/commerce/transactions/:id', auth, requireSuperAdminDelete, async (req,res,next)=>{
+    try{
+        const tx=await dbGet(`SELECT * FROM commerce_transactions WHERE id=?`,[req.params.id]);
+        if(!tx) return res.status(404).json({error:'Transação não encontrada.'});
+        const fId=getFactionScope(req);
+        if(!fId || Number(tx.faction_id)!==Number(fId)) return res.status(403).json({error:'Transação não pertence à facção selecionada.'});
+
+        await dbRun('BEGIN IMMEDIATE TRANSACTION');
+        try{
+            await dbRun(`UPDATE stalkers SET saldo_ru=COALESCE(saldo_ru,0)-?, reputacao=COALESCE(reputacao,0)-? WHERE id=? AND faction_id=?`,
+                [Number(tx.money_delta||0),Number(tx.reputation_delta||0),tx.person_id,tx.faction_id]);
+            if(tx.bank_transaction_id){
+                await dbRun(`DELETE FROM faction_bank_transactions WHERE id=? AND faction_id=?`,[tx.bank_transaction_id,tx.faction_id]);
+            }
+            await dbRun(`DELETE FROM commerce_transactions WHERE id=?`,[tx.id]);
+            await dbRun('COMMIT');
+        }catch(e){try{await dbRun('ROLLBACK')}catch(_){ } throw e}
+
+        await auditLog({userId:req.user.id,factionId:tx.faction_id,action:'DELETE_COMMERCE_TRANSACTION',entity:tx.module_code,entityId:tx.id,
+            metadata:{personId:tx.person_id,moneyDelta:tx.money_delta,reputationDelta:tx.reputation_delta,merchandise:tx.merchandise}});
+        res.json({success:true,deleted:true});
+    }catch(e){next(e)}
+});
+
+// --- BANCO GERAL / RESERVA DA FACÇÃO ---
+app.get('/api/general-bank', auth, async (req, res, next) => {
+    try {
+        const fId = getFactionScope(req);
+        if (!fId) return res.status(400).json({ error: 'Selecione uma facção.' });
+
+        const faction = await dbGet(`SELECT id, name, code FROM factions WHERE id=?`, [fId]);
+        if (!faction) return res.status(404).json({ error: 'Facção não encontrada.' });
+
+        const summary = await dbGet(`
+            SELECT
+              COALESCE(SUM(CASE WHEN type='entrada' THEN amount ELSE 0 END),0) AS total_entradas,
+              COALESCE(SUM(CASE WHEN type='saida' THEN amount ELSE 0 END),0) AS total_saidas
+            FROM faction_general_bank_transactions
+            WHERE faction_id=?
+        `, [fId]);
+
+        const transactions = await dbAll(`
+            SELECT t.*, u.name AS user_name, u.username
+            FROM faction_general_bank_transactions t
+            LEFT JOIN users u ON u.id=t.user_id
+            WHERE t.faction_id=?
+            ORDER BY t.transaction_date DESC, t.id DESC
+        `, [fId]);
+
+        const entradas = Number(summary.total_entradas || 0);
+        const saidas = Number(summary.total_saidas || 0);
+
+        res.json({
+            faction,
+            balance: entradas - saidas,
+            total_entradas: entradas,
+            total_saidas: saidas,
+            can_manage: canManageGeneralBank(req),
+            transactions
+        });
+    } catch (e) { next(e); }
+});
+
+app.post('/api/general-bank', auth, async (req, res, next) => {
+    try {
+        if (!canManageGeneralBank(req)) {
+            return res.status(403).json({
+                error: 'Somente o líder da facção pode registrar entradas e retiradas no Banco Geral.'
+            });
+        }
+
+        const fId = getFactionScope(req);
+        if (!fId) return res.status(400).json({ error: 'Selecione uma facção.' });
+
+        if (req.user.role !== 'super_admin' && fId !== req.user.factionId) {
+            return res.status(403).json({ error: 'Você só pode operar o Banco Geral da sua própria facção.' });
+        }
+
+        const { type, amount, reason, transaction_date } = req.body;
+        const value = Number(amount);
+
+        if (!['entrada','saida'].includes(type)) {
+            return res.status(400).json({ error: 'Tipo de movimentação inválido.' });
+        }
+        if (!Number.isFinite(value) || value <= 0) {
+            return res.status(400).json({ error: 'O valor deve ser maior que zero.' });
+        }
+        if (!String(reason || '').trim()) {
+            return res.status(400).json({ error: 'Informe o motivo da movimentação.' });
+        }
+
+        const today = getAppToday();
+        if (!isValidIsoDate(transaction_date)) {
+            return res.status(400).json({ error: 'Data inválida.' });
+        }
+        if (transaction_date < today) {
+            return res.status(400).json({
+                error: `Datas anteriores a ${today} não são permitidas.`
+            });
+        }
+
+        if (type === 'saida') {
+            const row = await dbGet(`
+                SELECT COALESCE(SUM(CASE WHEN type='entrada' THEN amount ELSE -amount END),0) AS balance
+                FROM faction_general_bank_transactions
+                WHERE faction_id=?
+            `, [fId]);
+
+            const balance = Number(row?.balance || 0);
+            if (value > balance) {
+                return res.status(400).json({
+                    error: `Saldo insuficiente no Banco Geral. Saldo atual: ${balance.toFixed(2)} RU.`
+                });
+            }
+        }
+
+        const result = await dbRun(`
+            INSERT INTO faction_general_bank_transactions
+            (faction_id,user_id,type,amount,reason,transaction_date)
+            VALUES (?,?,?,?,?,?)
+        `, [fId, req.user.id, type, value, String(reason).trim(), transaction_date]);
+
+        await auditLog({
+            userId:req.user.id,
+            factionId:fId,
+            action:type === 'entrada' ? 'GENERAL_BANK_DEPOSIT' : 'GENERAL_BANK_WITHDRAWAL',
+            entity:'general_bank',
+            entityId:result.lastID,
+            metadata:{ amount:value, reason:String(reason).trim(), date:transaction_date },
+            ipAddress:req.ip,
+            userAgent:req.get('user-agent')
+        });
+
+        res.status(201).json({ success:true, id:result.lastID });
+    } catch (e) { next(e); }
+});
+
+app.delete('/api/general-bank/:id', auth, requireSuperAdminDelete, async (req, res, next) => {
+    try {
+        const fId = getFactionScope(req);
+        if (!fId) return res.status(400).json({ error: 'Selecione uma facção.' });
+
+        const row = await dbGet(`
+            SELECT id,type,amount,reason
+            FROM faction_general_bank_transactions
+            WHERE id=? AND faction_id=?
+        `, [req.params.id, fId]);
+
+        if (!row) return res.status(404).json({ error: 'Lançamento não encontrado.' });
+
+        await dbRun(`DELETE FROM faction_general_bank_transactions WHERE id=? AND faction_id=?`,
+            [req.params.id, fId]);
+
+        await auditLog({
+            userId:req.user.id,
+            factionId:fId,
+            action:'DELETE_GENERAL_BANK_TRANSACTION',
+            entity:'general_bank',
+            entityId:req.params.id,
+            metadata:{ type:row.type, amount:row.amount, reason:row.reason },
+            ipAddress:req.ip,
+            userAgent:req.get('user-agent')
+        });
+
+        res.json({ success:true, deleted:true });
+    } catch (e) { next(e); }
+});
+
 // --- BANK / CAIXA ---
 app.get('/api/bank', auth, async (req, res) => {
     const fId = getFactionScope(req);
@@ -2556,11 +2934,14 @@ app.post('/api/bank', auth, async (req, res) => {
         return res.status(400).json({ error: 'Tipo inválido.' });
     }
 
-    // Data retroativa não é permitida.
-    const today = new Date().toISOString().slice(0, 10);
+    // Data retroativa não é permitida. O fuso padrão do sistema é America/Maceio.
+    const today = getAppToday();
+    if (!isValidIsoDate(transaction_date)) {
+        return res.status(400).json({ error: 'Data inválida.' });
+    }
     if (transaction_date < today) {
         return res.status(400).json({
-            error: 'Não é permitido registrar transações com data anterior à data atual.'
+            error: `Não é permitido registrar transações anteriores a ${today}.`
         });
     }
     

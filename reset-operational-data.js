@@ -19,7 +19,7 @@ const all=(sql,p=[])=>new Promise((resolve,reject)=>db.all(sql,p,(e,r)=>e?reject
 
 (async()=>{
  const tablesToClear=[
-  'contract_notes','mercenary_contracts','faction_bank_transactions','faction_records',
+  'contract_notes','mercenary_contracts','commerce_transactions','faction_bank_transactions','faction_records',
   'rp_experiments','audit_log','historico','stalkers','itens','inventarios','missoes',
   'relatorios','pesquisas'
  ];
