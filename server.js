@@ -51,6 +51,27 @@ const dbAll = (query, params = []) => new Promise((resolve, reject) => {
     });
 });
 
+const tableExists = async (tableName) => {
+    const row = await dbGet(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, [tableName]);
+    return !!row;
+};
+
+const getTableColumns = async (tableName) => {
+    const rows = await dbAll(`PRAGMA table_info(${tableName})`);
+    return rows.map(r => r.name);
+};
+
+const ensureColumn = async (tableName, columnName, definition) => {
+    const exists = await tableExists(tableName);
+    if (!exists) return false;
+    const cols = await getTableColumns(tableName);
+    if (!cols.includes(columnName)) {
+        await dbRun(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+        return true;
+    }
+    return false;
+};
+
 // ==========================================
 // DATABASE SCHEMA & SEEDING
 // ==========================================
@@ -199,6 +220,65 @@ async function initDb() {
                     await dbRun(`ALTER TABLE ${table} ADD COLUMN faction_id INTEGER DEFAULT 2`);
                 } catch (e) { /* Ignore if column exists */ }
             }
+
+            // Legacy compatibility migration: old databases used slightly different schemas.
+            // These adjustments let the new faction-specific STALKER pages work on top of the
+            // user's existing production database without destroying earlier data.
+            await ensureColumn('itens', 'nome', 'TEXT');
+            await ensureColumn('itens', 'tipo', "TEXT DEFAULT 'Item'");
+            await ensureColumn('itens', 'quantidade', 'INTEGER DEFAULT 1');
+            await ensureColumn('itens', 'valor_base', 'REAL DEFAULT 0');
+            await ensureColumn('itens', 'foto', "TEXT DEFAULT ''");
+            await ensureColumn('itens', 'faction_id', 'INTEGER DEFAULT 2');
+
+            const itensCols = await getTableColumns('itens');
+            if (itensCols.includes('categoria')) {
+                await dbRun(`UPDATE itens SET tipo = COALESCE(NULLIF(tipo,''), categoria, 'Item')`);
+            }
+            if (itensCols.includes('preco_base')) {
+                await dbRun(`UPDATE itens SET valor_base = COALESCE(valor_base, preco_base, 0)`);
+            }
+            await dbRun(`UPDATE itens SET quantidade = COALESCE(NULLIF(quantidade, 0), 1)`);
+
+            await ensureColumn('missoes', 'titulo', 'TEXT');
+            await ensureColumn('missoes', 'descricao', 'TEXT');
+            await ensureColumn('missoes', 'recompensa', 'REAL DEFAULT 0');
+            await ensureColumn('missoes', 'status', "TEXT DEFAULT 'pendente'");
+            await ensureColumn('missoes', 'faction_id', 'INTEGER DEFAULT 2');
+            await ensureColumn('missoes', 'stalker_id', 'INTEGER');
+            await ensureColumn('missoes', 'foto', "TEXT DEFAULT ''");
+            await ensureColumn('relatorios', 'foto', "TEXT DEFAULT ''");
+            await ensureColumn('rp_experiments', 'foto', "TEXT DEFAULT ''");
+
+
+            const missoesCols = await getTableColumns('missoes');
+            if (missoesCols.includes('recompensa_ru')) {
+                await dbRun(`UPDATE missoes SET recompensa = COALESCE(recompensa, recompensa_ru, 0)`);
+            } else if (missoesCols.includes('recompensa_rep')) {
+                await dbRun(`UPDATE missoes SET recompensa = COALESCE(recompensa, recompensa_rep, 0)`);
+            }
+            await dbRun(`UPDATE missoes SET status = COALESCE(NULLIF(status,''), 'pendente')`);
+
+            await ensureColumn('relatorios', 'numero', 'TEXT');
+            await ensureColumn('relatorios', 'autor', 'TEXT');
+            await ensureColumn('relatorios', 'membros', 'TEXT');
+            await ensureColumn('relatorios', 'objetivo', 'TEXT');
+            await ensureColumn('relatorios', 'col1', 'TEXT');
+            await ensureColumn('relatorios', 'col2', 'TEXT');
+            await ensureColumn('relatorios', 'col3', 'TEXT');
+            await ensureColumn('relatorios', 'faction_id', 'INTEGER DEFAULT 2');
+
+            await ensureColumn('stalkers', 'nome', 'TEXT');
+            await ensureColumn('stalkers', 'codinome', 'TEXT');
+            await ensureColumn('stalkers', 'faccao', 'TEXT');
+            await ensureColumn('stalkers', 'foto', 'TEXT');
+            await ensureColumn('stalkers', 'reputacao', 'INTEGER DEFAULT 0');
+            await ensureColumn('stalkers', 'rumores', 'TEXT');
+            await ensureColumn('stalkers', 'ultimo_checkin', 'TEXT');
+            await ensureColumn('stalkers', 'area_atuacao', 'TEXT');
+            await ensureColumn('stalkers', 'status_lista_negra', 'INTEGER DEFAULT 0');
+            await ensureColumn('stalkers', 'motivo_lista_negra', 'TEXT');
+            await ensureColumn('stalkers', 'faction_id', 'INTEGER DEFAULT 2');
 
             // Seed Factions
             const factions = [
@@ -461,6 +541,15 @@ async function auth(req, res, next) {
     }
 }
 
+function requireSuperAdminDelete(req, res, next) {
+    if (!req.user || req.user.role !== 'super_admin') {
+        return res.status(403).json({
+            error: 'Somente o Super Admin pode excluir registros permanentemente.'
+        });
+    }
+    next();
+}
+
 function requireCapability(...capabilities) {
     return async (req, res, next) => {
         if (req.user.role === 'super_admin') return next();
@@ -611,7 +700,7 @@ app.post('/api/users', auth, requireCapability('users:manage'), async (req, res,
             factionId: z.number().int().positive().nullable().optional()
         });
 
-        const parsed = schema.safeParse(req.body);
+        const parsed = schema.safeParse(bodyData);
         if (!parsed.success) {
             return res.status(400).json({
                 error: 'Dados do usuário inválidos.',
@@ -686,7 +775,7 @@ app.put('/api/users/:id', auth, requireCapability('users:manage'), async (req, r
     } catch (e) { next(e); }
 });
 
-app.delete('/api/users/:id', auth, requireCapability('users:manage'), async (req, res, next) => {
+app.delete('/api/users/:id', auth, requireSuperAdminDelete, requireCapability('users:manage'), async (req, res, next) => {
     try {
         const targetId = parseInt(req.params.id, 10);
 
@@ -771,7 +860,7 @@ app.put('/api/membros/:id', auth, requireCapability('users:manage'), async (req,
     } catch (e) { next(e); }
 });
 
-app.delete('/api/membros/:id', auth, requireCapability('users:manage'), async (req, res, next) => {
+app.delete('/api/membros/:id', auth, requireSuperAdminDelete, requireCapability('users:manage'), async (req, res, next) => {
     try {
         const targetId = parseInt(req.params.id, 10);
 
@@ -854,7 +943,7 @@ app.put('/api/stalkers/:id', auth, requireCapability('stalkers:manage'), upload.
     } catch (e) { next(e); }
 });
 
-app.delete('/api/stalkers/:id', auth, requireCapability('stalkers:manage'), async (req, res) => {
+app.delete('/api/stalkers/:id', auth, requireSuperAdminDelete, requireCapability('stalkers:manage'), async (req, res) => {
     await dbRun(`DELETE FROM stalkers WHERE id=?`, [req.params.id]);
     res.json({ success: true });
 });
@@ -1020,25 +1109,76 @@ app.get('/api/itens', auth, requireCapability('items:read'), async (req, res) =>
     const params = fId ? [fId] : [];
     res.json(await dbAll(`SELECT * FROM itens ${fId ? 'WHERE faction_id = ?' : ''}`, params));
 });
-app.post('/api/itens', auth, requireCapability('items:manage'), async (req, res) => {
-    const fId = getFactionScope(req) || 2;
-    await dbRun(`INSERT INTO itens (nome, tipo, quantidade, valor_base, faction_id) VALUES (?, ?, ?, ?, ?)`,
-        [req.body.nome, req.body.tipo, req.body.quantidade, req.body.valor_base, fId]);
-    res.json({ success: true });
+app.post('/api/itens', auth, requireCapability('items:manage'), upload.single('foto'), async (req, res, next) => {
+    try {
+        const fId = getFactionScope(req) || 2;
+        const nome = req.body.nome || '';
+        const tipo = req.body.tipo || req.body.categoria || 'Item';
+        const quantidade = Number(req.body.quantidade || 1);
+        const valorBase = Number(req.body.valor_base ?? req.body.preco_base ?? 0);
+        const foto = req.file ? `/uploads/${req.file.filename}` : '';
+        const nivel = Number(req.body.nivel_minimo || req.body.nivel_piaget || 1);
+
+        const cols = await getTableColumns('itens');
+        const fields = ['nome','tipo','quantidade','valor_base','faction_id'];
+        const values = [nome,tipo,quantidade,valorBase,fId];
+
+        if (cols.includes('foto')) { fields.push('foto'); values.push(foto); }
+        if (cols.includes('categoria')) { fields.push('categoria'); values.push(tipo); }
+        if (cols.includes('preco_base')) { fields.push('preco_base'); values.push(valorBase); }
+        if (cols.includes('nivel_piaget')) { fields.push('nivel_piaget'); values.push(nivel); }
+
+        const placeholders = fields.map(() => '?').join(',');
+        const result = await dbRun(
+            `INSERT INTO itens (${fields.join(',')}) VALUES (${placeholders})`,
+            values
+        );
+
+        await auditLog({
+            userId:req.user.id,
+            factionId:fId,
+            action:'CREATE_ITEM',
+            entity:'itens',
+            entityId:result.lastID,
+            metadata:{ nome, tipo }
+        });
+
+        res.status(201).json({ success:true, id:result.lastID });
+    } catch (e) { next(e); }
 });
 app.put('/api/itens/:id', auth, requireCapability('items:manage'), upload.single('foto'), async (req, res, next) => {
     try {
-        let sql = `UPDATE itens SET nome=?, tipo=?, quantidade=?, valor_base=? WHERE id=?`;
-        let params = [req.body.nome, req.body.tipo, req.body.quantidade, req.body.valor_base, req.params.id];
-        if (req.file) {
-            sql = `UPDATE itens SET nome=?, tipo=?, quantidade=?, valor_base=?, foto=? WHERE id=?`;
-            params = [req.body.nome, req.body.tipo, req.body.quantidade, req.body.valor_base, `/uploads/${req.file.filename}`, req.params.id];
-        }
-        await dbRun(sql, params);
-        res.json({ success: true });
+        const nome = req.body.nome || '';
+        const tipo = req.body.tipo || req.body.categoria || 'Item';
+        const quantidade = Number(req.body.quantidade || 1);
+        const valorBase = Number(req.body.valor_base ?? req.body.preco_base ?? 0);
+        const nivel = Number(req.body.nivel_minimo || req.body.nivel_piaget || 1);
+
+        const cols = await getTableColumns('itens');
+        const sets = ['nome=?','tipo=?','quantidade=?','valor_base=?'];
+        const values = [nome,tipo,quantidade,valorBase];
+
+        if (cols.includes('categoria')) { sets.push('categoria=?'); values.push(tipo); }
+        if (cols.includes('preco_base')) { sets.push('preco_base=?'); values.push(valorBase); }
+        if (cols.includes('nivel_piaget')) { sets.push('nivel_piaget=?'); values.push(nivel); }
+        if (req.file && cols.includes('foto')) { sets.push('foto=?'); values.push(`/uploads/${req.file.filename}`); }
+
+        values.push(req.params.id);
+        await dbRun(`UPDATE itens SET ${sets.join(', ')} WHERE id=?`, values);
+
+        await auditLog({
+            userId:req.user.id,
+            factionId:getFactionScope(req),
+            action:'UPDATE_ITEM',
+            entity:'itens',
+            entityId:req.params.id,
+            metadata:{ nome, tipo }
+        });
+
+        res.json({ success:true });
     } catch (e) { next(e); }
 });
-app.delete('/api/itens/:id', auth, requireCapability('items:manage'), async (req, res) => {
+app.delete('/api/itens/:id', auth, requireSuperAdminDelete, requireCapability('items:manage'), async (req, res) => {
     await dbRun(`DELETE FROM itens WHERE id=?`, [req.params.id]);
     res.json({ success: true });
 });
@@ -1063,18 +1203,36 @@ app.get('/api/missoes', auth, requireCapability('missions:read'), async (req, re
     const fId = getFactionScope(req);
     res.json(await dbAll(`SELECT * FROM missoes ${fId ? 'WHERE faction_id = ?' : ''}`, fId ? [fId] : []));
 });
-app.post('/api/missoes', auth, requireCapability('missions:manage'), async (req, res) => {
-    const fId = getFactionScope(req) || 2;
-    await dbRun(`INSERT INTO missoes (titulo, descricao, recompensa, status, faction_id) VALUES (?, ?, ?, ?, ?)`,
-        [req.body.titulo, req.body.descricao, req.body.recompensa, 'pendente', fId]);
-    res.json({ success: true });
+app.post('/api/missoes', auth, requireCapability('missions:manage'), upload.single('foto'), async (req, res, next) => {
+    try {
+        const fId = getFactionScope(req) || 2;
+        const foto = req.file ? `/uploads/${req.file.filename}` : '';
+        const result = await dbRun(
+            `INSERT INTO missoes (titulo, descricao, recompensa, status, faction_id, foto)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [req.body.titulo, req.body.descricao, Number(req.body.recompensa || 0), 'pendente', fId, foto]
+        );
+        await auditLog({userId:req.user.id,factionId:fId,action:'CREATE_MISSION',entity:'missoes',entityId:result.lastID});
+        res.status(201).json({ success:true, id:result.lastID });
+    } catch(e) { next(e); }
 });
-app.put('/api/missoes/:id', auth, requireCapability('missions:manage'), async (req, res) => {
-    await dbRun(`UPDATE missoes SET titulo=?, descricao=?, recompensa=?, status=? WHERE id=?`,
-        [req.body.titulo, req.body.descricao, req.body.recompensa, req.body.status || 'pendente', req.params.id]);
-    res.json({ success: true });
+app.put('/api/missoes/:id', auth, requireCapability('missions:manage'), upload.single('foto'), async (req, res, next) => {
+    try {
+        if (req.file) {
+            await dbRun(
+                `UPDATE missoes SET titulo=?, descricao=?, recompensa=?, status=?, foto=? WHERE id=?`,
+                [req.body.titulo, req.body.descricao, Number(req.body.recompensa || 0), req.body.status || 'pendente', `/uploads/${req.file.filename}`, req.params.id]
+            );
+        } else {
+            await dbRun(
+                `UPDATE missoes SET titulo=?, descricao=?, recompensa=?, status=? WHERE id=?`,
+                [req.body.titulo, req.body.descricao, Number(req.body.recompensa || 0), req.body.status || 'pendente', req.params.id]
+            );
+        }
+        res.json({ success:true });
+    } catch(e) { next(e); }
 });
-app.delete('/api/missoes/:id', auth, requireCapability('missions:manage'), async (req, res) => {
+app.delete('/api/missoes/:id', auth, requireSuperAdminDelete, requireCapability('missions:manage'), async (req, res) => {
     await dbRun(`DELETE FROM missoes WHERE id=?`, [req.params.id]);
     res.json({ success: true });
 });
@@ -1121,7 +1279,7 @@ app.put('/api/pesquisas/:id', auth, requireCapability('research:manage'), upload
         res.json({ success: true });
     } catch (e) { next(e); }
 });
-app.delete('/api/pesquisas/:id', auth, requireCapability('research:manage'), async (req, res) => {
+app.delete('/api/pesquisas/:id', auth, requireSuperAdminDelete, requireCapability('research:manage'), async (req, res) => {
     await dbRun(`DELETE FROM pesquisas WHERE id=?`, [req.params.id]);
     res.json({ success: true });
 });
@@ -1146,7 +1304,7 @@ app.put('/api/relatorios/:id', auth, requireCapability('reports:manage'), async 
         res.json({ success: true });
     } catch (e) { next(e); }
 });
-app.delete('/api/relatorios/:id', auth, requireCapability('reports:manage'), async (req, res) => {
+app.delete('/api/relatorios/:id', auth, requireSuperAdminDelete, requireCapability('reports:manage'), async (req, res) => {
     await dbRun(`DELETE FROM relatorios WHERE id=?`, [req.params.id]);
     res.json({ success: true });
 });
@@ -1224,7 +1382,7 @@ app.get('/api/faction-records/:module', auth, async (req, res) => {
     res.json(rows.map(r => ({ ...r, extra: JSON.parse(r.extra_json || '{}') })));
 });
 
-app.post('/api/faction-records/:module', auth, async (req, res, next) => {
+app.post('/api/faction-records/:module', auth, upload.single('foto'), async (req, res, next) => {
     try {
         if (!canWriteFactionRp(req)) {
             return res.status(403).json({ error: 'Seu cargo possui acesso somente de leitura neste módulo.' });
@@ -1233,6 +1391,14 @@ app.post('/api/faction-records/:module', auth, async (req, res, next) => {
         const moduleCode = String(req.params.module || '').trim().toLowerCase();
         const scope = await resolveFactionModuleScope(req, moduleCode);
         if (scope.error) return res.status(403).json({ error: scope.error });
+
+        let bodyData = { ...req.body };
+        if (typeof bodyData.extra === 'string') {
+            try { bodyData.extra = JSON.parse(bodyData.extra); } catch (_) { bodyData.extra = {}; }
+        }
+        if (req.file) {
+            bodyData.extra = { ...(bodyData.extra || {}), photo: `/uploads/${req.file.filename}` };
+        }
 
         const schema = z.object({
             title: z.string().trim().min(2).max(120),
@@ -1269,7 +1435,7 @@ app.post('/api/faction-records/:module', auth, async (req, res, next) => {
     } catch (e) { next(e); }
 });
 
-app.put('/api/faction-records/:module/:id', auth, async (req, res, next) => {
+app.put('/api/faction-records/:module/:id', auth, upload.single('foto'), async (req, res, next) => {
     try {
         if (!canWriteFactionRp(req)) {
             return res.status(403).json({ error: 'Seu cargo possui acesso somente de leitura neste módulo.' });
@@ -1280,10 +1446,21 @@ app.put('/api/faction-records/:module/:id', auth, async (req, res, next) => {
         if (scope.error) return res.status(403).json({ error: scope.error });
 
         const current = await dbGet(
-            `SELECT id FROM faction_records WHERE id = ? AND faction_id = ? AND module_code = ?`,
+            `SELECT id, extra_json FROM faction_records WHERE id = ? AND faction_id = ? AND module_code = ?`,
             [req.params.id, scope.factionId, moduleCode]
         );
         if (!current) return res.status(404).json({ error: 'Registro não encontrado nesta facção.' });
+
+        let bodyData = { ...req.body };
+        if (typeof bodyData.extra === 'string') {
+            try { bodyData.extra = JSON.parse(bodyData.extra); } catch (_) { bodyData.extra = {}; }
+        }
+        let existingExtra = {};
+        try { existingExtra = JSON.parse(current.extra_json || '{}'); } catch (_) {}
+        bodyData.extra = { ...existingExtra, ...(bodyData.extra || {}) };
+        if (req.file) {
+            bodyData.extra.photo = `/uploads/${req.file.filename}`;
+        }
 
         const schema = z.object({
             title: z.string().trim().min(2).max(120),
@@ -1294,7 +1471,7 @@ app.put('/api/faction-records/:module/:id', auth, async (req, res, next) => {
             description: z.string().trim().max(5000).optional().default(''),
             extra: z.record(z.any()).optional().default({})
         });
-        const parsed = schema.safeParse(req.body);
+        const parsed = schema.safeParse(bodyData);
         if (!parsed.success) return res.status(400).json({ error: 'Dados inválidos.' });
 
         const d = parsed.data;
@@ -1309,7 +1486,7 @@ app.put('/api/faction-records/:module/:id', auth, async (req, res, next) => {
     } catch (e) { next(e); }
 });
 
-app.delete('/api/faction-records/:module/:id', auth, async (req, res, next) => {
+app.delete('/api/faction-records/:module/:id', auth, requireSuperAdminDelete, async (req, res, next) => {
     try {
         if (!canWriteFactionRp(req)) {
             return res.status(403).json({ error: 'Seu cargo não pode excluir registros deste módulo.' });
@@ -1361,7 +1538,7 @@ app.get('/api/rp-experiments', auth, requireCapability('research:read'), async (
     res.json(rows);
 });
 
-app.post('/api/rp-experiments', auth, requireCapability('research:manage'), async (req, res, next) => {
+app.post('/api/rp-experiments', auth, requireCapability('research:manage'), upload.single('foto'), async (req, res, next) => {
     try {
         const faction = await resolveEcologistScope(req);
         if (!faction) return res.status(403).json({ error: 'Experimentos RP são exclusivos dos Ecologistas.' });
@@ -1388,15 +1565,15 @@ app.post('/api/rp-experiments', auth, requireCapability('research:manage'), asyn
 
         const result = await dbRun(
             `INSERT INTO rp_experiments
-             (faction_id,title,experiment_type,subject,hypothesis,risk_level,status,procedure_summary,expected_result,observed_result,rp_effects,notes,created_by)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [faction.id,d.title,d.experimentType,d.subject,d.hypothesis,d.riskLevel,d.status,d.procedureSummary,d.expectedResult,d.observedResult,d.rpEffects,d.notes,req.user.id]
+             (faction_id,title,experiment_type,subject,hypothesis,risk_level,status,procedure_summary,expected_result,observed_result,rp_effects,notes,created_by,foto)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [faction.id,d.title,d.experimentType,d.subject,d.hypothesis,d.riskLevel,d.status,d.procedureSummary,d.expectedResult,d.observedResult,d.rpEffects,d.notes,req.user.id,req.file ? `/uploads/${req.file.filename}` : '']
         );
         res.status(201).json({ success: true, id: result.lastID });
     } catch (e) { next(e); }
 });
 
-app.put('/api/rp-experiments/:id', auth, requireCapability('research:manage'), async (req, res, next) => {
+app.put('/api/rp-experiments/:id', auth, requireCapability('research:manage'), upload.single('foto'), async (req, res, next) => {
     try {
         const faction = await resolveEcologistScope(req);
         if (!faction) return res.status(403).json({ error: 'Experimentos RP são exclusivos dos Ecologistas.' });
@@ -1429,11 +1606,15 @@ app.put('/api/rp-experiments/:id', auth, requireCapability('research:manage'), a
             [d.title,d.experimentType,d.subject,d.hypothesis,d.riskLevel,d.status,d.procedureSummary,
              d.expectedResult,d.observedResult,d.rpEffects,d.notes,req.params.id,faction.id]
         );
+        if (req.file) {
+            await dbRun(`UPDATE rp_experiments SET foto=? WHERE id=? AND faction_id=?`,
+                [`/uploads/${req.file.filename}`, req.params.id, faction.id]);
+        }
         res.json({ success: true });
     } catch (e) { next(e); }
 });
 
-app.delete('/api/rp-experiments/:id', auth, requireCapability('research:manage'), async (req, res, next) => {
+app.delete('/api/rp-experiments/:id', auth, requireSuperAdminDelete, requireCapability('research:manage'), async (req, res, next) => {
     try {
         const faction = await resolveEcologistScope(req);
         if (!faction) return res.status(403).json({ error: 'Experimentos RP são exclusivos dos Ecologistas.' });
@@ -1500,7 +1681,7 @@ app.post('/api/mercenary/clients/:id/photo', auth, upload.single('photo'), async
     }
 });
 
-app.delete('/api/mercenary/clients/:id', auth, async (req, res, next) => {
+app.delete('/api/mercenary/clients/:id', auth, requireSuperAdminDelete, async (req, res, next) => {
     try {
         if (!isMercenaryLeader(req)) {
             return res.status(403).json({
@@ -1564,7 +1745,7 @@ app.delete('/api/mercenary/clients/:id', auth, async (req, res, next) => {
     }
 });
 
-app.delete('/api/mercenary/clients/:id/photo', auth, async (req, res, next) => {
+app.delete('/api/mercenary/clients/:id/photo', auth, requireSuperAdminDelete, async (req, res, next) => {
     try {
         if (!hasMercenaryAccess(req)) {
             return res.status(403).json({ error: 'Clientes são exclusivos dos Mercenários.' });
@@ -1757,7 +1938,7 @@ app.post('/api/mercenary/intel/:id/status', auth, async (req, res, next) => {
     } catch (e) { next(e); }
 });
 
-app.delete('/api/mercenary/intel/:id', auth, async (req, res, next) => {
+app.delete('/api/mercenary/intel/:id', auth, requireSuperAdminDelete, async (req, res, next) => {
     try {
         if (!isMercenaryLeader(req)) {
             return res.status(403).json({ error: 'Apenas o líder da facção pode excluir informes.' });
@@ -1939,7 +2120,7 @@ app.post('/api/mercenary/archive/:id/archive', auth, async (req, res, next) => {
     }
 });
 
-app.delete('/api/mercenary/archive/:id', auth, async (req, res, next) => {
+app.delete('/api/mercenary/archive/:id', auth, requireSuperAdminDelete, async (req, res, next) => {
     try {
         if (!isMercenaryLeader(req)) {
             return res.status(403).json({ error: 'Apenas o líder da facção pode excluir dossiês.' });
@@ -2176,7 +2357,7 @@ app.post('/api/mercenary/operations/:id/complete', auth, async (req, res, next) 
     } catch (e) { next(e); }
 });
 
-app.delete('/api/mercenary/operations/:id', auth, async (req, res, next) => {
+app.delete('/api/mercenary/operations/:id', auth, requireSuperAdminDelete, async (req, res, next) => {
     try {
         if (!isMercenaryLeader(req)) {
             return res.status(403).json({ error: 'Apenas o líder da facção pode excluir operações.' });
@@ -2213,12 +2394,26 @@ app.get('/api/faction-dashboard', auth, async (req, res, next) => {
               COALESCE(SUM(CASE WHEN type='entrada' THEN amount ELSE 0 END),0) entradas,
               COALESCE(SUM(CASE WHEN type='saida' THEN amount ELSE 0 END),0) saidas
             FROM faction_bank_transactions WHERE faction_id=?`, [factionId]);
-        const users = await dbGet(`SELECT COUNT(*) total, SUM(CASE WHEN active=1 THEN 1 ELSE 0 END) active FROM users WHERE faction_id=?`, [factionId]);
-        const missions = await dbGet(`SELECT COUNT(*) total, SUM(CASE WHEN status IN ('pendente','em andamento') THEN 1 ELSE 0 END) open FROM missoes WHERE faction_id=?`, [factionId]);
-        const records = await dbAll(`SELECT module_code, status, COUNT(*) qty FROM faction_records WHERE faction_id=? GROUP BY module_code,status`, [factionId]);
+        const users = await dbGet(`SELECT COUNT(*) total, COALESCE(SUM(CASE WHEN active=1 THEN 1 ELSE 0 END),0) active FROM users WHERE faction_id=?`, [factionId]);
+        const missions = await dbGet(`
+            SELECT
+              COUNT(*) total,
+              COALESCE(SUM(CASE
+                WHEN LOWER(COALESCE(status,'')) IN ('pendente','em andamento','em_andamento','ativa','ativo','aberta','novo','planejamento')
+                THEN 1 ELSE 0 END),0) open
+            FROM missoes WHERE faction_id=?`, [factionId]);
+        const records = (await tableExists('faction_records'))
+            ? await dbAll(`SELECT module_code, status, COUNT(*) qty FROM faction_records WHERE faction_id=? GROUP BY module_code,status`, [factionId])
+            : [];
         const stalkers = await dbGet(`SELECT COUNT(*) total FROM stalkers WHERE faction_id=?`, [factionId]);
-        const items = await dbGet(`SELECT COALESCE(SUM(quantidade),0) qty, COUNT(*) types FROM itens WHERE faction_id=?`, [factionId]);
-        const research = await dbGet(`SELECT COUNT(*) total FROM rp_experiments WHERE faction_id=?`, [factionId]);
+
+        const itemCols = await getTableColumns('itens');
+        const itemQtyExpr = itemCols.includes('quantidade') ? 'COALESCE(SUM(COALESCE(quantidade,1)),0)' : 'COUNT(*)';
+        const items = await dbGet(`SELECT ${itemQtyExpr} qty, COUNT(*) types FROM itens WHERE faction_id=?`, [factionId]);
+
+        const research = (await tableExists('rp_experiments'))
+            ? await dbGet(`SELECT COUNT(*) total FROM rp_experiments WHERE faction_id=?`, [factionId])
+            : { total: 0 };
         const reports = await dbGet(`SELECT COUNT(*) total FROM relatorios WHERE faction_id=?`, [factionId]);
         const latest = await dbAll(`
             SELECT a.action,a.entity,a.entity_id,a.created_at,u.name user_name
@@ -2227,15 +2422,19 @@ app.get('/api/faction-dashboard', auth, async (req, res, next) => {
 
         res.json({
             faction,
-            balance: Number(bank.entradas||0)-Number(bank.saidas||0),
-            entradas:Number(bank.entradas||0), saidas:Number(bank.saidas||0),
-            users:{total:Number(users.total||0),active:Number(users.active||0)},
-            missions:{total:Number(missions.total||0),open:Number(missions.open||0)},
-            records, stalkers:Number(stalkers.total||0),
-            inventory:{qty:Number(items.qty||0),types:Number(items.types||0)},
-            research:Number(research.total||0), reports:Number(reports.total||0), latest
+            balance: Number(bank.entradas || 0) - Number(bank.saidas || 0),
+            entradas: Number(bank.entradas || 0),
+            saidas: Number(bank.saidas || 0),
+            users: { total: Number(users.total || 0), active: Number(users.active || 0) },
+            missions: { total: Number(missions.total || 0), open: Number(missions.open || 0) },
+            records,
+            stalkers: Number(stalkers.total || 0),
+            inventory: { qty: Number(items.qty || 0), types: Number(items.types || 0) },
+            research: Number(research.total || 0),
+            reports: Number(reports.total || 0),
+            latest
         });
-    } catch(e){ next(e); }
+    } catch (e) { next(e); }
 });
 
 app.get('/api/stats', auth, async (req, res) => {
@@ -2283,6 +2482,32 @@ app.get('/api/bank', auth, async (req, res) => {
         total_saidas: balanceRow.total_saidas || 0,
         transactions
     });
+});
+
+app.delete('/api/bank/:id', auth, requireSuperAdminDelete, async (req, res, next) => {
+    try {
+        const fId = getFactionScope(req);
+        if (!fId) return res.status(400).json({ error: 'Selecione uma facção.' });
+
+        const tx = await dbGet(
+            `SELECT id, type, amount, reason FROM faction_bank_transactions WHERE id=? AND faction_id=?`,
+            [req.params.id, fId]
+        );
+        if (!tx) return res.status(404).json({ error: 'Transação não encontrada nesta facção.' });
+
+        await dbRun(`DELETE FROM faction_bank_transactions WHERE id=? AND faction_id=?`, [req.params.id, fId]);
+        await auditLog({
+            userId:req.user.id,
+            factionId:fId,
+            action:'DELETE_BANK_TRANSACTION',
+            entity:'bank',
+            entityId:req.params.id,
+            metadata:{ type:tx.type, amount:tx.amount, reason:tx.reason },
+            ipAddress:req.ip,
+            userAgent:req.get('user-agent')
+        });
+        res.json({ success:true, deleted:true });
+    } catch(e) { next(e); }
 });
 
 app.post('/api/bank', auth, async (req, res) => {
