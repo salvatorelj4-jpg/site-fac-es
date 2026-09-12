@@ -45,6 +45,101 @@ function switchSuperAdminContext(value) {
   }
 }
 
+function humanizeResetKey(key) {
+  const map = {
+    users: 'Usuários',
+    contracts: 'Contratos',
+    contracts_new: 'Contratos novos',
+    contracts_accepted: 'Contratos aceitos',
+    bank_transactions: 'Caixa da facção',
+    general_bank_transactions: 'Banco Geral',
+    records: 'Registros',
+    archive_records: 'Arquivos / dossiês',
+    operations: 'Operações',
+    clients: 'Clientes',
+    intel: 'Inteligência',
+    reports: 'Relatórios',
+    missions: 'Missões',
+    items: 'Itens / estoque',
+    supplies: 'Suprimentos',
+    stalkers: 'Stalkers / membros',
+    squad: 'Equipe',
+    research: 'Pesquisas',
+    experiments: 'Experimentos',
+    commerce: 'Comércio',
+    audits: 'Auditoria',
+    history: 'Histórico',
+    territories: 'Territórios'
+  };
+  return map[key] || key.replace(/_/g, ' ');
+}
+
+function buildResetSummaryText(counts) {
+  const entries = Object.entries(counts || {}).filter(([, value]) => Number(value || 0) > 0);
+  if (!entries.length) return 'Nenhum dado operacional encontrado para esta facção.';
+  return entries
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+    .map(([key, value]) => `- ${humanizeResetKey(key)}: ${value}`)
+    .join('\n');
+}
+
+async function superAdminResetCurrentFaction() {
+  const user = getUser();
+  const ctx = getSuperAdminContext();
+
+  if (!user || user.role !== 'super_admin' || !ctx) {
+    return showError('Apenas o Super Admin pode usar este reset dentro das facções.');
+  }
+
+  try {
+    const info = await api(`/api/admin/factions/${ctx.id}/reset-summary`);
+    const factionName = info?.faction?.name || ctx.name || 'Facção';
+    const counts = info?.counts || {};
+    const summary = buildResetSummaryText(counts);
+
+    const modeChoice = prompt(
+      `RESET DA FACÇÃO: ${factionName.toUpperCase()}\n\n` +
+      `Resumo atual:\n${summary}\n\n` +
+      `Digite 1 para RESET OPERACIONAL\n` +
+      `- Apaga caixa, banco geral, contratos, comércio, itens, missões, relatórios, pesquisas, clientes, inteligência, operações, arquivos, histórico e auditoria da facção.\n\n` +
+      `Digite 2 para RESET TOTAL\n` +
+      `- Faz tudo acima e também remove os usuários vinculados à facção.\n\n` +
+      `Digite 0 para cancelar.`,
+      '1'
+    );
+
+    if (modeChoice === null || String(modeChoice).trim() === '' || String(modeChoice).trim() === '0') {
+      return;
+    }
+
+    const normalized = String(modeChoice).trim().toLowerCase();
+    const mode = ['2', 'full', 'total'].includes(normalized) ? 'full' : 'operational';
+    const modeLabel = mode === 'full' ? 'RESET TOTAL' : 'RESET OPERACIONAL';
+
+    const confirmationText = `RESETAR ${String(factionName).toUpperCase()}`;
+    const confirmation = prompt(
+      `${modeLabel} de ${factionName}.\n\n` +
+      `Para confirmar, digite exatamente:\n${confirmationText}`,
+      ''
+    );
+
+    if (confirmation === null) return;
+
+    const result = await api(`/api/admin/factions/${ctx.id}/reset`, {
+      method: 'POST',
+      body: { mode, confirmation }
+    });
+
+    showSuccess(
+      `${modeLabel} concluído em ${factionName}. Backup: ${result?.backup || 'gerado'}`
+    );
+
+    setTimeout(() => window.location.reload(), 1200);
+  } catch (error) {
+    console.error('Faction quick reset error:', error);
+  }
+}
+
 // ==========================================
 // 2. AUTH UTILITIES
 // ==========================================
@@ -347,6 +442,10 @@ function buildNav(currentPage) {
     const activeClass = currentPage === link.url ? 'active' : '';
     navHtml += `<li><a href="${link.url}" class="${activeClass}">${link.name}</a></li>`;
   });
+
+  if (role === 'super_admin' && ctx) {
+    navHtml += `<li><a href="#" onclick="superAdminResetCurrentFaction(); return false;" class="logout-btn" style="color:#ff8080;border:1px solid rgba(255,80,80,.45);padding:6px 10px;border-radius:6px;background:rgba(120,0,0,.18);">Resetar Facção</a></li>`;
+  }
 
   navHtml += `<li><a href="#" onclick="logout(); return false;" class="logout-btn">Sair</a></li>`;
   navHtml += `</ul>`;
