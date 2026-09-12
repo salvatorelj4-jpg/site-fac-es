@@ -125,3 +125,8 @@ BANCO GERAL
 - Datas passadas são recusadas.
 - Somente Super Admin pode excluir lançamentos.
 - Movimentações são registradas no Log de Auditoria.
+
+
+V21 — limpeza total dos dados operacionais
+- O pacote não envia mais database.db/data.sqlite preenchidos.
+- Execute `node reset-operational-data.js` após enviar os arquivos para zerar contratos, caixa, banco geral, comércio, missões, relatórios e auditoria.
