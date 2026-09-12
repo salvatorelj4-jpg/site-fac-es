@@ -1304,7 +1304,7 @@ app.put('/api/faction-records/:module/:id', auth, async (req, res, next) => {
              WHERE id=? AND faction_id=? AND module_code=?`,
             [d.title, d.category, d.status, d.location, d.subject, d.description, JSON.stringify(d.extra), req.params.id, scope.factionId, moduleCode]
         );
-
+        await auditLog({ userId:req.user.id, factionId:scope.factionId, action:'UPDATE_FACTION_RECORD', entity:moduleCode, entityId:req.params.id, metadata:{title:d.title} });
         res.json({ success: true });
     } catch (e) { next(e); }
 });
@@ -1329,6 +1329,7 @@ app.delete('/api/faction-records/:module/:id', auth, async (req, res, next) => {
             `DELETE FROM faction_records WHERE id = ? AND faction_id = ? AND module_code = ?`,
             [req.params.id, scope.factionId, moduleCode]
         );
+        await auditLog({ userId:req.user.id, factionId:scope.factionId, action:'DELETE_FACTION_RECORD', entity:moduleCode, entityId:req.params.id });
         res.json({ success: true, deleted: true });
     } catch (e) { next(e); }
 });
@@ -2199,6 +2200,44 @@ app.delete('/api/mercenary/operations/:id', auth, async (req, res, next) => {
 });
 
 // --- ADMIN / DASHBOARD STATS ---
+app.get('/api/faction-dashboard', auth, async (req, res, next) => {
+    try {
+        const factionId = getFactionScope(req);
+        if (!factionId) return res.status(400).json({ error: 'Selecione uma facção.' });
+
+        const faction = await dbGet(`SELECT id, code, name, active FROM factions WHERE id=?`, [factionId]);
+        if (!faction) return res.status(404).json({ error: 'Facção não encontrada.' });
+
+        const bank = await dbGet(`
+            SELECT
+              COALESCE(SUM(CASE WHEN type='entrada' THEN amount ELSE 0 END),0) entradas,
+              COALESCE(SUM(CASE WHEN type='saida' THEN amount ELSE 0 END),0) saidas
+            FROM faction_bank_transactions WHERE faction_id=?`, [factionId]);
+        const users = await dbGet(`SELECT COUNT(*) total, SUM(CASE WHEN active=1 THEN 1 ELSE 0 END) active FROM users WHERE faction_id=?`, [factionId]);
+        const missions = await dbGet(`SELECT COUNT(*) total, SUM(CASE WHEN status IN ('pendente','em andamento') THEN 1 ELSE 0 END) open FROM missoes WHERE faction_id=?`, [factionId]);
+        const records = await dbAll(`SELECT module_code, status, COUNT(*) qty FROM faction_records WHERE faction_id=? GROUP BY module_code,status`, [factionId]);
+        const stalkers = await dbGet(`SELECT COUNT(*) total FROM stalkers WHERE faction_id=?`, [factionId]);
+        const items = await dbGet(`SELECT COALESCE(SUM(quantidade),0) qty, COUNT(*) types FROM itens WHERE faction_id=?`, [factionId]);
+        const research = await dbGet(`SELECT COUNT(*) total FROM rp_experiments WHERE faction_id=?`, [factionId]);
+        const reports = await dbGet(`SELECT COUNT(*) total FROM relatorios WHERE faction_id=?`, [factionId]);
+        const latest = await dbAll(`
+            SELECT a.action,a.entity,a.entity_id,a.created_at,u.name user_name
+            FROM audit_log a LEFT JOIN users u ON u.id=a.user_id
+            WHERE a.faction_id=? ORDER BY a.created_at DESC,a.id DESC LIMIT 6`, [factionId]);
+
+        res.json({
+            faction,
+            balance: Number(bank.entradas||0)-Number(bank.saidas||0),
+            entradas:Number(bank.entradas||0), saidas:Number(bank.saidas||0),
+            users:{total:Number(users.total||0),active:Number(users.active||0)},
+            missions:{total:Number(missions.total||0),open:Number(missions.open||0)},
+            records, stalkers:Number(stalkers.total||0),
+            inventory:{qty:Number(items.qty||0),types:Number(items.types||0)},
+            research:Number(research.total||0), reports:Number(reports.total||0), latest
+        });
+    } catch(e){ next(e); }
+});
+
 app.get('/api/stats', auth, async (req, res) => {
     const fId = getFactionScope(req);
     const stalkersCount = await dbGet(`SELECT COUNT(*) as count FROM stalkers ${fId ? 'WHERE faction_id = ?' : ''}`, fId ? [fId] : []);
