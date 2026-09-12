@@ -6,12 +6,12 @@
 <link rel="stylesheet" href="style.css">
 <title>Clientes Mercenários</title>
 <style>
-.merc-wrap{max-width:1150px;margin:30px auto}.hero{background:linear-gradient(120deg,#03080d,#071829);border:1px solid #17314d;border-top:3px solid #3b82f6;padding:22px}
+.merc-wrap{max-width:1150px;margin:30px auto;padding-top:48px}.hero{background:linear-gradient(120deg,#03080d,#071829);border:1px solid #17314d;border-top:3px solid #3b82f6;padding:22px}
 .dossiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:15px}
 .dossier{background:#03070b;border:1px solid #17314d;padding:18px;position:relative;display:grid;grid-template-columns:110px 1fr;gap:16px}
 .client-photo{width:110px;height:135px;object-fit:cover;border:1px solid #294b70;background:#07111d}
 .photo-placeholder{width:110px;height:135px;border:1px solid #294b70;background:linear-gradient(145deg,#07111d,#020508);display:flex;align-items:center;justify-content:center;font-size:42px;color:#1e3a5f}
-.dossier:before{content:'CLIENT FILE';position:absolute;right:10px;top:8px;color:#18334e;font-size:.75em;letter-spacing:2px}
+.dossier:before{content:'CLIENT FILE';position:absolute;right:10px;top:8px;color:#18334e;font-size:.75em;letter-spacing:2px}.client-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
 @media(max-width:600px){.dossier{grid-template-columns:1fr}.client-photo,.photo-placeholder{width:100%;height:220px}}
 </style>
 </head>
@@ -97,13 +97,21 @@ async function saveClient(){
  }catch(e){showError(e.message||'Erro ao cadastrar cliente.')}
 }
 
-async function removePhoto(id){
- if(!confirm('Remover a foto deste cliente?'))return;
+async function deleteClient(id, name){
+ const u=getUser();
+ if(!(u.role==='super_admin'||u.role==='faction_admin')){
+   return showError('Apenas o líder dos Mercenários pode excluir clientes.');
+ }
+
+ if(!confirm(`Excluir permanentemente o cadastro de "${name}"? A foto e os dados deste cliente também serão apagados.`))return;
+
  try{
-   await api(`/api/mercenary/clients/${id}/photo`,{method:'DELETE'});
-   showSuccess('Foto removida.');
-   loadClients();
- }catch(e){console.error(e)}
+   await api(`/api/mercenary/clients/${id}`,{method:'DELETE'});
+   showSuccess('Cadastro do cliente excluído. A ação foi registrada no Log de Auditoria.');
+   await loadClients();
+ }catch(e){
+   console.error(e);
+ }
 }
 
 async function loadClients(){
@@ -111,7 +119,6 @@ async function loadClients(){
  clientList.innerHTML=rows.map(r=>`<div class="dossier">
  <div>
  ${r.extra?.photo?`<img class="client-photo" src="${escapeHtml(r.extra.photo)}" alt="Foto do cliente">`:`<div class="photo-placeholder">☠</div>`}
- ${r.extra?.photo?`<button class="btn-secondary w-auto" style="margin-top:8px;width:100%" onclick="removePhoto(${r.id})">REMOVER FOTO</button>`:''}
  </div>
  <div>
  <h3 class="text-accent">${escapeHtml(r.title)}</h3>
@@ -121,6 +128,10 @@ async function loadClients(){
  <p><b>Zona:</b> ${escapeHtml(r.location||'-')}</p>
  ${r.extra?.details?`<p><b>Confiança:</b> ${escapeHtml(r.extra.details)}</p>`:''}
  ${r.description?`<p class="text-muted">${escapeHtml(r.description)}</p>`:''}
+ ${(getUser().role==='super_admin'||getUser().role==='faction_admin')?`
+ <div class="client-actions">
+   <button class="btn-danger w-auto" onclick="deleteClient(${r.id}, '${String(r.title).replace(/'/g,"\'")}')">EXCLUIR CADASTRO</button>
+ </div>`:''}
  </div>
  </div>`).join('')||'<div class="card">Nenhum cliente cadastrado.</div>'
 }
