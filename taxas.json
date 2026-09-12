@@ -1,0 +1,7 @@
+﻿[
+  {"min":0,"max":100,"label":"Desconhecido","cor":"#7f8c8d","acesso":"Itens Básicos","compra":1.75,"venda":0.50,"nivel":1},
+  {"min":101,"max":500,"label":"Baixo","cor":"#e74c3c","acesso":"Itens Básicos","compra":1.60,"venda":0.65,"nivel":1},
+  {"min":501,"max":3000,"label":"Médio","cor":"#f1c40f","acesso":"Artefatos/Trajes","compra":1.50,"venda":0.75,"nivel":2},
+  {"min":3001,"max":5000,"label":"Alto","cor":"#2ecc71","acesso":"Tecnologia Experimental","compra":1.25,"venda":0.85,"nivel":3},
+  {"min":5001,"max":9999,"label":"Total","cor":"#00b4d8","acesso":"Acesso Irrestrito","compra":1.0,"venda":1.0,"nivel":3}
+]

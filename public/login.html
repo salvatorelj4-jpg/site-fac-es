@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Acesso à Rede</title>
+</head>
+<body>
+    <div class="container" style="max-width:380px; margin-top:80px;">
+        <div class="card" style="border-top:3px solid var(--accent);">
+            <div style="text-align:center; margin-bottom:20px;">
+                <div style="font-size:3em; margin-bottom:10px;">🔒</div>
+                <h2 style="color:var(--accent); margin:0; letter-spacing:2px;">SECURE NETWORK ACCESS</h2>
+                <p style="color:#7f8c8d; margin:5px 0 0 0; font-size:0.9em;">Autenticação necessária para acesso ao sistema</p>
+            </div>
+            <hr>
+            <div id="loginError" class="hidden" style="background:rgba(231,76,60,0.1); border:1px solid var(--danger); padding:10px; border-radius:4px; margin-bottom:15px; text-align:center;">
+                <span style="color:var(--danger);" id="loginErrorMsg">Credenciais inválidas</span>
+            </div>
+            <input type="text" id="loginUser" placeholder="Usuário" autocomplete="username">
+            <input type="password" id="loginPass" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+            <button onclick="doLogin()" id="btnLogin" style="margin-top:15px;">AUTENTICAR</button>
+        </div>
+        <div style="text-align:center; margin-top:20px;">
+            <a href="/contratar.html" style="color:var(--accent); text-decoration:none; font-size:0.95em;">← Solicitar contrato aos Mercenários</a>
+        </div>
+    </div>
+    <script src="app.js"></script>
+    <script>
+        if (typeof isLoggedIn === 'function' && isLoggedIn()) {
+            const u = getUser();
+            if (u && u.role === 'super_admin') window.location.href = '/admin.html';
+            else window.location.href = '/dashboard.html';
+        }
+        async function doLogin() {
+            const btn = document.getElementById('btnLogin');
+            const errDiv = document.getElementById('loginError');
+            errDiv.classList.add('hidden');
+            btn.disabled = true;
+            btn.innerText = '⏳ VERIFICANDO...';
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: document.getElementById('loginUser').value,
+                        password: document.getElementById('loginPass').value
+                    })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    saveAuth(data.token, data.user);
+                    if (data.user.role === 'super_admin') window.location.href = '/admin.html';
+                    else window.location.href = '/dashboard.html';
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    document.getElementById('loginErrorMsg').innerText = err.error || 'Credenciais inválidas ou conta desativada.';
+                    errDiv.classList.remove('hidden');
+                }
+            } catch (e) {
+                document.getElementById('loginErrorMsg').innerText = 'Erro de conexão com o servidor.';
+                errDiv.classList.remove('hidden');
+            }
+            btn.disabled = false;
+            btn.innerText = 'AUTENTICAR';
+        }
+    </script>
+</body>
+</html>

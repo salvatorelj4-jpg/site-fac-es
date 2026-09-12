@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Painel de Contratos</title>
+</head>
+<body onload="checkAuth('operator'); carregarPainelContratos()">
+    <nav id="mainNav"></nav>
+
+    <div class="container">
+        <h2 style="color: #3498db; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px;">
+            TERMINAL DE CONTRATOS ATIVOS
+        </h2>
+        
+        <div id="listaContratos">Carregando dados da rede...</div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        async function carregarPainelContratos() {
+            try {
+                const res = await fetch('/api/contracts', {
+                    headers: { 'Authorization': localStorage.getItem('stalker_token') }
+                });
+                
+                if (!res.ok) {
+                    document.getElementById('listaContratos').innerHTML = "<p style='color:red;'>Acesso Negado ou Falha de Conexão.</p>";
+                    return;
+                }
+                
+                const contratos = await res.json();
+                const div = document.getElementById('listaContratos');
+                
+                if (contratos.length === 0) {
+                    div.innerHTML = "<p style='color:#7f8c8d;'>Nenhum contrato pendente no sistema.</p>";
+                    return;
+                }
+                
+                div.innerHTML = contratos.reverse().map(c => {
+                    let statusColor = '#3498db';
+                    if(c.status === 'ACCEPTED') statusColor = '#f39c12';
+                    if(c.status === 'COMPLETED') statusColor = '#2ecc71';
+                    if(c.status === 'FAILED') statusColor = '#e74c3c';
+                    
+                    return `
+                    <div class="pda-ui" style="margin-bottom: 20px; border-left: 4px solid ${statusColor};">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                            <div>
+                                <h3 style="margin:0 0 5px 0; color:${statusColor};">${c.public_code} - ${c.mission_type || 'Misteriosa'}</h3>
+                                <p style="margin:0 0 10px 0; color:#aaa;">Cliente: ${c.client_name} | Local: ${c.location || 'N/A'}</p>
+                                <p style="margin:0 0 5px 0; color:#ddd;"><strong>Alvo/Objetivo:</strong> ${c.target || c.objective}</p>
+                                <p style="margin:0 0 10px 0; color:#aaa;">${c.description}</p>
+                                <div style="display:flex; gap:15px; font-size: 0.9em;">
+                                    <span style="color:#e67e22;">Recompensa: ${c.reward || 'A Negociar'}</span>
+                                    <span style="color:#e74c3c;">Risco: ${c.risk_level || 'N/A'}</span>
+                                    <span style="color:#2ecc71;">Data: ${new Date(c.created_at).toLocaleString()}</span>
+                                </div>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:10px;">
+                                <select onchange="atualizarStatusContrato(${c.id}, this.value)" style="background:#0f1011; color:${statusColor}; border-color:${statusColor}; padding:8px;">
+                                    <option value="NEW" ${c.status === 'NEW' ? 'selected' : ''}>NOVO</option>
+                                    <option value="ACCEPTED" ${c.status === 'ACCEPTED' ? 'selected' : ''}>ACEITO (EM ANDAMENTO)</option>
+                                    <option value="COMPLETED" ${c.status === 'COMPLETED' ? 'selected' : ''}>CONCLUÍDO</option>
+                                    <option value="FAILED" ${c.status === 'FAILED' ? 'selected' : ''}>FALHOU / ABORTADO</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch(e) {
+                console.error(e);
+            }
+        }
+        
+        async function atualizarStatusContrato(id, novoStatus) {
+            if(confirm("Confirmar atualização do contrato?")) {
+                await fetch(`/api/contracts/${id}/status`, {
+                    method: 'PUT',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': localStorage.getItem('stalker_token')
+                    },
+                    body: JSON.stringify({ status: novoStatus })
+                });
+                location.reload();
+            } else {
+                location.reload(); // reset select
+            }
+        }
+    </script>
+</body>
+</html>

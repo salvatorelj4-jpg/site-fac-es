@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Contratos — Mercenários</title>
+</head>
+<body onload="checkAuth(); loadContractPage();">
+    <nav id="mainNav"></nav>
+    <div class="container">
+        <div class="card" style="border-top:3px solid var(--accent);">
+            <h2 style="margin-top:0; color:var(--accent);">📋 CONTRATOS MERCENÁRIOS</h2>
+            <p class="text-muted">Solicitações recebidas via formulário público e contratos em andamento.</p>
+        </div>
+
+        <!-- Filters -->
+        <div class="d-flex gap-1 mb-1 flex-wrap">
+            <select id="filterStatus" onchange="filterContracts()" style="flex:1; min-width:200px;">
+                <option value="">Todos os Status</option>
+                <option value="NEW" selected>Novos</option>
+                <option value="UNDER_REVIEW">Em Análise</option>
+                <option value="ACCEPTED">Aceitos</option>
+                <option value="ACTIVE">Ativos</option>
+                <option value="COMPLETED">Concluídos</option>
+                <option value="REJECTED">Rejeitados</option>
+                <option value="CANCELLED">Cancelados</option>
+            </select>
+            <input type="text" id="searchContracts" placeholder="🔍 Buscar por código ou contratante..." onkeyup="filterContracts()" style="flex:2; min-width:250px;">
+        </div>
+
+        <div id="contractsList"><p class="text-muted">Carregando contratos...</p></div>
+    </div>
+
+    <!-- Contract Detail Modal -->
+    <div id="contractModal" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width:700px; max-height:90vh; overflow-y:auto;">
+            <span class="fechar-modal" onclick="closeContractModal()">&times;</span>
+            <div id="contractDetail"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        let allContracts = [];
+
+        async function loadContractPage() {
+            try {
+                allContracts = await api('/api/contracts');
+                filterContracts();
+            } catch(e) { showError('Erro ao carregar contratos.'); }
+        }
+
+        function filterContracts() {
+            const status = document.getElementById('filterStatus').value;
+            const search = (document.getElementById('searchContracts').value || '').toLowerCase();
+            let filtered = allContracts;
+            if (status) filtered = filtered.filter(c => c.status === status);
+            if (search) filtered = filtered.filter(c => (c.public_code || '').toLowerCase().includes(search) || (c.client_name || '').toLowerCase().includes(search));
+            renderContracts(filtered);
+        }
+
+        function renderContracts(contracts) {
+            const div = document.getElementById('contractsList');
+            if (!contracts || contracts.length === 0) { div.innerHTML = '<p class="text-muted" style="font-size:1.1em;">Nenhum contrato encontrado.</p>'; return; }
+            const statusColors = { NEW: '#3498db', UNDER_REVIEW: '#f39c12', ACCEPTED: '#2ecc71', ACTIVE: '#e67e22', COMPLETED: '#7f8c8d', REJECTED: '#e74c3c', CANCELLED: '#95a5a6' };
+            div.innerHTML = contracts.map(c => {
+                const color = statusColors[c.status] || '#888';
+                return `<div class="card" style="border-left:4px solid ${color}; cursor:pointer;" onclick="openContract(${c.id})">
+                    <div class="d-flex justify-between align-center flex-wrap" style="gap:10px;">
+                        <div>
+                            <strong style="font-family:monospace; font-size:1.2em; color:var(--accent);">${escapeHtml(c.public_code)}</strong>
+                            <span class="text-muted" style="margin-left:10px;">${escapeHtml(c.client_name)}</span><br>
+                            <small class="text-muted">${c.mission_type || 'Tipo não definido'} | Risco: ${c.risk_level || 'N/D'} | ${formatDate(c.created_at)}</small>
+                        </div>
+                        <span class="badge" style="background:${color}; color:#fff;">${c.status.replace('_', ' ')}</span>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        async function openContract(id) {
+            try {
+                const c = allContracts.find(x => x.id === id);
+                const notes = await api(`/api/contracts/${id}/notes`);
+                const statusColors = { NEW: '#3498db', UNDER_REVIEW: '#f39c12', ACCEPTED: '#2ecc71', ACTIVE: '#e67e22', COMPLETED: '#7f8c8d', REJECTED: '#e74c3c', CANCELLED: '#95a5a6' };
+                const transitions = { NEW: ['UNDER_REVIEW', 'REJECTED'], UNDER_REVIEW: ['ACCEPTED', 'REJECTED'], ACCEPTED: ['ACTIVE', 'CANCELLED'], ACTIVE: ['COMPLETED', 'CANCELLED'] };
+                const available = transitions[c.status] || [];
+                document.getElementById('contractDetail').innerHTML = `
+                    <h2 style="color:var(--accent); margin:0 0 5px 0;">${escapeHtml(c.public_code)}</h2>
+                    <span class="badge" style="background:${statusColors[c.status]}; color:#fff; font-size:1em;">${c.status.replace('_', ' ')}</span>
+                    <hr>
+                    <div class="d-flex gap-2 flex-wrap" style="margin:15px 0;">
+                        <div style="flex:1; min-width:250px;">
+                            <p><b>Contratante:</b> ${escapeHtml(c.client_name)}</p>
+                            <p><b>Contato:</b> ${escapeHtml(c.contact || 'N/D')}</p>
+                            <p><b>Discord:</b> ${escapeHtml(c.discord || 'N/D')}</p>
+                            <p><b>Tipo:</b> ${escapeHtml(c.mission_type || 'N/D')}</p>
+                            <p><b>Local:</b> ${escapeHtml(c.location || 'N/D')}</p>
+                        </div>
+                        <div style="flex:1; min-width:250px;">
+                            <p><b>Objetivo:</b> ${escapeHtml(c.objective || 'N/D')}</p>
+                            <p><b>Alvo:</b> ${escapeHtml(c.target || 'N/D')}</p>
+                            <p><b>Operadores:</b> ${c.operator_estimate || 'N/D'}</p>
+                            <p><b>Risco:</b> ${escapeHtml(c.risk_level || 'N/D')}</p>
+                            <p><b>Data Desejada:</b> ${escapeHtml(c.desired_date || 'N/D')}</p>
+                            <p><b>Recompensa:</b> ${escapeHtml(c.reward || 'N/D')}</p>
+                        </div>
+                    </div>
+                    ${c.description ? `<div style="background:rgba(0,0,0,0.3); padding:15px; border-left:3px solid var(--accent); border-radius:4px; margin:15px 0;"><b>Descrição:</b><br>${escapeHtml(c.description)}</div>` : ''}
+                    ${c.additional_info ? `<div style="background:rgba(0,0,0,0.3); padding:15px; border-left:3px solid var(--warning); border-radius:4px; margin:15px 0;"><b>Info Adicional:</b><br>${escapeHtml(c.additional_info)}</div>` : ''}
+                    ${available.length > 0 ? `<div class="d-flex gap-1 flex-wrap" style="margin:15px 0;">${available.map(s => `<button onclick="changeStatus(${c.id}, '${s}')" class="w-auto" style="padding:8px 15px; background:${statusColors[s]};">${s.replace('_', ' ')}</button>`).join('')}</div>` : ''}
+                    <hr>
+                    <h4 style="color:var(--accent);">📝 Notas Internas</h4>
+                    <div id="notesList">${(notes && notes.length > 0) ? notes.map(n => `<div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:8px 0;"><small class="text-muted">${formatDateTime(n.created_at)} — ${escapeHtml(n.user_name || 'Sistema')}</small><p style="margin:5px 0;">${escapeHtml(n.message)}</p></div>`).join('') : '<p class="text-muted">Nenhuma nota.</p>'}</div>
+                    <div class="d-flex gap-1" style="margin-top:10px;">
+                        <input type="text" id="newNote" placeholder="Adicionar nota interna..." style="flex:1; margin:0;">
+                        <button onclick="addNote(${c.id})" class="w-auto" style="padding:8px 15px;">Adicionar</button>
+                    </div>`;
+                document.getElementById('contractModal').style.display = 'flex';
+            } catch(e) { showError('Erro ao carregar contrato.'); }
+        }
+
+        function closeContractModal() { document.getElementById('contractModal').style.display = 'none'; }
+
+        async function changeStatus(id, status) {
+            if (!confirm(`Alterar status para ${status}?`)) return;
+            try {
+                await api(`/api/contracts/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+                showSuccess('Status atualizado.');
+                closeContractModal();
+                await loadContractPage();
+            } catch(e) { showError(e.message || 'Erro.'); }
+        }
+
+        async function addNote(contractId) {
+            const msg = document.getElementById('newNote').value;
+            if (!msg) return;
+            try {
+                await api(`/api/contracts/${contractId}/notes`, { method: 'POST', body: JSON.stringify({ message: msg }) });
+                document.getElementById('newNote').value = '';
+                openContract(contractId);
+            } catch(e) { showError('Erro ao adicionar nota.'); }
+        }
+    </script>
+</body>
+</html>

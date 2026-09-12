@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="style.css"><title>Stalkers</title></head>
+<body onload="checkAuth(); carregarStalkers()">
+    <nav id="mainNav"></nav>
+    <div class="container">
+        
+        <div class="card">
+            <h3 id="formTitle">Novo Registro de Stalker</h3>
+            <form id="formStalker" onsubmit="salvarStalker(event)">
+                <input type="hidden" id="editId">
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <input name="nome" id="fNome" placeholder="Nome Real" required style="flex:1">
+                    <input name="codinome" id="fCodinome" placeholder="Codinome" required style="flex:1">
+                    <input name="faccao" id="fFaccao" placeholder="Facção do Agente" required style="flex:1">
+                </div>
+                
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <input name="area_atuacao" id="fArea" placeholder="Área de Atuação Principal (Ex: Cordão, Yantar)" style="flex:1">
+                    <input name="aliados" id="fAliados" placeholder="Aliados Conhecidos Específicos" style="flex:1">
+                    <input name="inimigos" id="fInimigos" placeholder="Inimigos Específicos" style="flex:1">
+                </div>
+
+                <details style="margin-bottom:15px; background:rgba(0,0,0,0.4); border:1px solid #333; border-radius:4px;">
+                    <summary style="padding:10px; cursor:pointer; font-weight:bold; color:var(--accent); outline:none; border-bottom:1px solid #222;">
+                        🤝 Diplomacia e Relação com Facções
+                    </summary>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:15px; padding:15px; background:var(--bg);">
+                        <div style="display:flex; justify-content:space-between; align-items:center;"><label style="color:#aaa;">Loners:</label><select class="relacao-fac" data-fac="Loners" style="padding:5px; background:#222; color:#fff; border:1px solid #444; border-radius:3px;"><option value="Neutro">⚪ Neutro</option><option value="Aliado">🛡️ Aliado</option><option value="Inimigo">⚔️ Inimigo</option></select></div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;"><label style="color:#aaa;">Duty (Dolg):</label><select class="relacao-fac" data-fac="Duty" style="padding:5px; background:#222; color:#fff; border:1px solid #444; border-radius:3px;"><option value="Neutro">⚪ Neutro</option><option value="Aliado">🛡️ Aliado</option><option value="Inimigo">⚔️ Inimigo</option></select></div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;"><label style="color:#aaa;">Freedom:</label><select class="relacao-fac" data-fac="Freedom" style="padding:5px; background:#222; color:#fff; border:1px solid #444; border-radius:3px;"><option value="Neutro">⚪ Neutro</option><option value="Aliado">🛡️ Aliado</option><option value="Inimigo">⚔️ Inimigo</option></select></div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;"><label style="color:#aaa;">Mercenários:</label><select class="relacao-fac" data-fac="Mercenários" style="padding:5px; background:#222; color:#fff; border:1px solid #444; border-radius:3px;"><option value="Neutro">⚪ Neutro</option><option value="Aliado">🛡️ Aliado</option><option value="Inimigo">⚔️ Inimigo</option></select></div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;"><label style="color:#aaa;">Bandidos:</label><select class="relacao-fac" data-fac="Bandidos" style="padding:5px; background:#222; color:#fff; border:1px solid #444; border-radius:3px;"><option value="Neutro">⚪ Neutro</option><option value="Aliado">🛡️ Aliado</option><option value="Inimigo">⚔️ Inimigo</option></select></div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;"><label style="color:#aaa;">Militares:</label><select class="relacao-fac" data-fac="Militares" style="padding:5px; background:#222; color:#fff; border:1px solid #444; border-radius:3px;"><option value="Neutro">⚪ Neutro</option><option value="Aliado">🛡️ Aliado</option><option value="Inimigo">⚔️ Inimigo</option></select></div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;"><label style="color:#aaa;">Monolith:</label><select class="relacao-fac" data-fac="Monolith" style="padding:5px; background:#222; color:#fff; border:1px solid #444; border-radius:3px;"><option value="Neutro">⚪ Neutro</option><option value="Aliado">🛡️ Aliado</option><option value="Inimigo">⚔️ Inimigo</option></select></div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;"><label style="color:#aaa;">Clear Sky:</label><select class="relacao-fac" data-fac="Clear Sky" style="padding:5px; background:#222; color:#fff; border:1px solid #444; border-radius:3px;"><option value="Neutro">⚪ Neutro</option><option value="Aliado">🛡️ Aliado</option><option value="Inimigo">⚔️ Inimigo</option></select></div>
+                    </div>
+                </details>
+
+                <input type="hidden" name="relacoes_faccoes" id="fRelacoes">
+                <textarea name="rumores" id="fRumores" placeholder="Rumores, Comportamento ou Notas Confidenciais da Direção (Opcional)..." style="height:60px;"></textarea>
+                
+                <label style="color:var(--accent); font-weight:bold; display:block; margin-top:5px;">Foto do Agente:</label> 
+                <input type="file" name="foto" style="margin-bottom:15px;">
+                
+                <div style="display:flex; gap:10px;">
+                    <button type="submit" id="btnSalvar">Salvar no Banco de Dados</button>
+                    <button type="button" id="btnCancelar" onclick="cancelarEdicao()" style="background:#555; display:none;">Cancelar Edição</button>
+                </div>
+            </form>
+        </div>
+
+        <hr style="margin: 30px 0; border-color:#333;">
+        
+        <div style="display:flex; gap: 10px; margin-bottom: 20px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="buscaStalker" placeholder="🔍 Buscar Codinome, Nome ou Facção..." onkeyup="aplicarFiltrosEOrdem()" style="flex: 2; min-width: 250px; font-size: 1.1em; padding: 12px; border: 2px solid var(--accent); border-radius: 8px; background: rgba(0,0,0,0.5); margin: 0; color:#fff;">
+            <select id="ordemStalker" onchange="aplicarFiltrosEOrdem()" style="flex: 1; min-width: 200px; font-size: 1.1em; padding: 12px; border: 2px solid var(--accent); border-radius: 8px; background: rgba(0,0,0,0.8); color: #fff; margin: 0; outline:none; cursor:pointer;">
+                <option value="id_desc">↓ Últimos Cadastrados</option>
+                <option value="id_asc">↑ Primeiros Cadastrados</option>
+                <option value="rep_desc">⭐ Maior Reputação</option>
+                <option value="rep_asc">💀 Menor Reputação</option>
+                <option value="alfa_asc">A-Z (Codinome)</option>
+                <option value="alfa_desc">Z-A (Codinome)</option>
+                <option value="fac_asc">🚩 Agrupar por Facção (A-Z)</option>
+                <option value="fac_desc">🚩 Agrupar por Facção (Z-A)</option>
+            </select>
+        </div>
+
+        <div id="listaStalkers"></div>
+    </div>
+
+    <div id="modalPerfil" class="modal-overlay" style="display:none;">
+        <div class="modal-content" style="max-width:700px;">
+            <span class="fechar-modal" onclick="fecharPerfilStalker()">&times;</span>
+            <div id="conteudoPerfil"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

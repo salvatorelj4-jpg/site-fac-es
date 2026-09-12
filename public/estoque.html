@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="style.css"><title>Estoque</title></head>
+<body onload="checkAuth(); inicializarEstoque()">
+    <nav id="mainNav"></nav>
+    <div class="container">
+        
+        <div class="card" id="painelGerenciamentoEstoque" style="display:none; border-top: 3px solid var(--accent);">
+            <h3>Adicionar Novo Equipamento ao Inventário</h3>
+            <form id="formItem" onsubmit="salvarItem(event)">
+                <input type="hidden" id="editItemId">
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <input type="text" name="nome" id="nomeItem" placeholder="Nome do Item (Ex: Kit Médico AI-2)" required style="flex:2">
+                    <input type="text" name="categoria" id="catItem" placeholder="Categoria (Ex: Medicina, Arma, Artefato)" required style="flex:1">
+                </div>
+                
+                <div style="display:flex; gap:10px; margin-bottom:15px; align-items:center;">
+                    <input type="number" name="preco_base" id="precoItem" placeholder="Preço Base em RU (Rublos)" required style="flex:1">
+                    <select name="nivel_minimo" id="nivelMinimo" style="flex:1; padding:10px; background:rgba(0,0,0,0.6); color:#fff; border:1px solid var(--border); border-radius:4px;">
+                        <option value="1">Nível 1: Livre (Qualquer Reputação compra)</option>
+                        <option value="2">Nível 2: Restrito (Exige Reputação Média)</option>
+                        <option value="3">Nível 3: Confidencial (Exige Reputação Alta)</option>
+                    </select>
+                </div>
+                
+                <label style="color:var(--accent); font-weight:bold; display:block; margin-top:5px;">Foto do Item para o Catálogo:</label> 
+                <input type="file" name="foto" style="margin-bottom:15px;">
+                
+                <div style="display:flex; gap:10px;">
+                    <button type="submit" id="btnSalvarItem">Cadastrar no Sistema</button>
+                    <button type="button" id="btnCancelarItem" onclick="cancelarEdicaoItem()" style="background:#555; display:none;">Cancelar Edição</button>
+                </div>
+            </form>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #333; margin-top:20px; padding-bottom:10px;">
+            <h3 style="margin:0;">Inventário do Laboratório</h3>
+            <button id="btnImportarCarga" onclick="importarCarga()" style="background:#8e44ad; width:auto; font-weight:bold; margin:0; display:none; box-shadow: 0 0 10px #8e44ad;">📥 Solicitar Carga Oficial</button>
+        </div>
+        
+        <div style="display:flex; gap: 10px; margin-bottom: 20px; margin-top: 15px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="buscaEstoque" placeholder="🔍 Buscar Equipamento por nome ou categoria..." onkeyup="aplicarFiltroEstoque()" style="flex: 1; min-width: 250px; font-size: 1.1em; padding: 12px; border: 2px solid var(--accent); border-radius: 8px; background: rgba(0,0,0,0.5); margin: 0; color:#fff;">
+        </div>
+
+        <div id="listaDeItens"></div>
+
+    </div>
+    <script src="app.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

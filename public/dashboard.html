@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Dashboard</title>
+</head>
+<body onload="checkAuth(); loadDashboard();">
+    <nav id="mainNav"></nav>
+    <div class="container">
+        <div class="card" style="border-top: 3px solid var(--accent);">
+            <h2 style="margin-top:0; font-size:1.6em;">Terminal Principal | Operador: <span id="nomeUsuarioLogado" class="text-accent">Carregando...</span></h2>
+            <p>Status do Sistema: <b class="text-accent" style="text-shadow: 0 0 5px var(--accent);">ONLINE E OPERANTE</b></p>
+        </div>
+        <div id="statsContainer" class="d-flex gap-1 flex-wrap">
+            <div class="card stat-card flex-1" style="min-width:200px; text-align:center;">
+                <h3 class="text-muted">Agentes Registrados</h3>
+                <h1 id="statStalkers" class="text-accent" style="font-size:3em; margin:10px 0;">0</h1>
+            </div>
+            <div class="card stat-card flex-1" style="min-width:200px; text-align:center;">
+                <h3 style="color:var(--warning);">Itens no Estoque</h3>
+                <h1 id="statItens" style="font-size:3em; margin:10px 0; color:var(--warning);">0</h1>
+            </div>
+            <div class="card stat-card flex-1" style="min-width:200px; text-align:center;">
+                <h3 class="text-danger">Operações Ativas</h3>
+                <h1 id="statMissoes" style="font-size:3em; margin:10px 0;" class="text-danger">0</h1>
+            </div>
+        </div>
+        <div class="card">
+            <h3 class="text-info">Agente de Maior Confiança</h3>
+            <p style="font-size:1.5em; font-weight:bold;" id="statTop">Nenhum</p>
+        </div>
+    </div>
+    <script src="app.js"></script>
+    <script src="script.js"></script>
+    <script>
+        async function loadDashboard() {
+            try {
+                const user = getUser();
+                const el = document.getElementById('nomeUsuarioLogado');
+                if (el && user) el.innerText = user.name || 'Operador';
+                const res = await api('/api/stats');
+                if (res) {
+                    document.getElementById('statStalkers').innerText = res.totalStalkers || 0;
+                    document.getElementById('statItens').innerText = res.totalItens || 0;
+                    document.getElementById('statMissoes').innerText = res.missoesAtivas || 0;
+                    document.getElementById('statTop').innerText = res.topStalker || 'Nenhum';
+                }
+            } catch(e) { console.error(e); }
+        }
+    </script>
+</body>
+</html>

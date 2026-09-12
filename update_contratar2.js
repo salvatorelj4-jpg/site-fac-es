@@ -1,0 +1,468 @@
+const fs = require('fs');
+
+const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sindicato Mercenário</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            /* Background escuro com grid sutil e vinheta simulando monitor */
+            background-color: #020508;
+            background-image: 
+                radial-gradient(circle at center, rgba(10,20,30,0) 0%, rgba(2,5,8,1) 100%),
+                linear-gradient(rgba(15, 30, 45, 0.15) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(15, 30, 45, 0.15) 1px, transparent 1px);
+            background-size: 100% 100%, 20px 20px, 20px 20px;
+            background-attachment: fixed;
+            font-family: 'Share Tech Mono', monospace;
+            color: #3b82f6;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            text-transform: uppercase;
+        }
+
+        /* HUD TOP BAR */
+        .hud-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 40px;
+            font-size: 0.7em;
+            color: #2c4c68;
+            border-bottom: 1px solid #0a1828;
+            letter-spacing: 2px;
+            position: relative;
+        }
+        .hud-header::before {
+            content: ''; position: absolute; left: 0; bottom: -1px; width: 100%; height: 1px; background: rgba(59, 130, 246, 0.2);
+        }
+        .online-status {
+            color: #3b82f6;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .online-dot {
+            width: 8px; height: 8px; background: #3b82f6; border-radius: 50%;
+            box-shadow: 0 0 10px #3b82f6;
+        }
+        .signal-bars {
+            display: flex; gap: 2px; align-items: flex-end; height: 10px;
+        }
+        .signal-bars div { width: 3px; background: #3b82f6; }
+        .signal-bars div:nth-child(1) { height: 4px; }
+        .signal-bars div:nth-child(2) { height: 7px; }
+        .signal-bars div:nth-child(3) { height: 10px; }
+        .lock-icon { font-size: 1.2em; color: #3b82f6; }
+
+        /* MAIN WRAPPER */
+        .main-wrapper {
+            display: flex;
+            gap: 20px;
+            padding: 40px;
+            flex: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* PANELS */
+        .panel {
+            background: rgba(4, 9, 14, 0.85);
+            border: 1px solid #132435;
+            border-radius: 2px;
+            position: relative;
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.9), 0 0 20px rgba(0,0,0,0.8);
+        }
+        /* Detalhes de cantoneira dos painéis */
+        .panel::before, .panel::after {
+            content: ''; position: absolute; width: 8px; height: 8px; border: 1px solid #3b82f6; opacity: 0.5;
+        }
+        .panel::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+        .panel::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+        /* LEFT COLUMN (FORM) */
+        .form-col {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 35px;
+            padding-bottom: 25px;
+            border-bottom: 1px dashed #132435;
+        }
+        .skull-logo {
+            font-size: 50px;
+            color: #3b82f6;
+            text-shadow: 0 0 15px rgba(59,130,246,0.6);
+            opacity: 0.9;
+        }
+        .header-title h1 {
+            color: #60a5fa;
+            font-size: 2.2em;
+            letter-spacing: 4px;
+            margin-bottom: 5px;
+            text-shadow: 0 0 10px rgba(96,165,250,0.3);
+            font-weight: normal;
+        }
+        .header-title p { color: #2c4c68; font-size: 0.8em; letter-spacing: 2px; }
+
+        .input-row { display: flex; gap: 30px; margin-bottom: 25px; }
+        .input-group { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+        
+        .input-group label {
+            color: #3b82f6;
+            font-size: 0.8em;
+            letter-spacing: 1px;
+            text-shadow: 0 0 5px rgba(59,130,246,0.3);
+        }
+        .input-group label.risk-label { color: #ef4444; text-shadow: 0 0 5px rgba(239,68,68,0.3); }
+
+        .input-group input, .input-group select, .input-group textarea {
+            background: #05080c;
+            border: 1px solid #132435;
+            color: #64748b;
+            padding: 12px 15px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 0.95em;
+            outline: none;
+            transition: all 0.3s;
+        }
+        .input-group input::placeholder, .input-group textarea::placeholder { color: #1e293b; }
+        .input-group input:focus, .input-group select:focus, .input-group textarea:focus {
+            border-color: #3b82f6;
+            color: #94a3b8;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.1);
+        }
+        .input-group select { appearance: none; background-image: url('data:image/svg+xml;utf8,<svg fill="%233b82f6" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>'); background-repeat: no-repeat; background-position: right 10px center; }
+        
+        .input-group select.risk-select {
+            border-color: #451a1a;
+            color: #ef4444;
+            background-image: url('data:image/svg+xml;utf8,<svg fill="%23ef4444" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+        }
+
+        /* TRANSMIT BUTTON */
+        .cyber-btn {
+            background: linear-gradient(180deg, rgba(15,30,45,0.8) 0%, rgba(5,10,15,0.8) 100%);
+            border: 1px solid #3b82f6;
+            color: #60a5fa;
+            padding: 15px;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.1em;
+            letter-spacing: 2px;
+            cursor: pointer;
+            box-shadow: inset 0 0 20px rgba(59,130,246,0.2), 0 0 15px rgba(59,130,246,0.1);
+            transition: all 0.3s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            text-decoration: none;
+            position: relative;
+            margin-top: 10px;
+        }
+        .cyber-btn::before, .cyber-btn::after {
+            content: ''; position: absolute; width: 6px; height: 6px; border: 1px solid #60a5fa;
+        }
+        .cyber-btn::before { top: 3px; left: 3px; border-right: none; border-bottom: none; }
+        .cyber-btn::after { bottom: 3px; right: 3px; border-left: none; border-top: none; }
+        .cyber-btn:hover {
+            background: rgba(15,30,45,1);
+            box-shadow: inset 0 0 30px rgba(59,130,246,0.4), 0 0 20px rgba(59,130,246,0.3);
+            color: #fff;
+        }
+
+        /* RIGHT COLUMN (SIDEBAR) */
+        .sidebar-col {
+            width: 320px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .login-box {
+            text-align: center;
+            border-bottom: 1px dashed #132435;
+            padding-bottom: 30px;
+            margin-bottom: 30px;
+        }
+        .login-box h3 {
+            color: #3b82f6;
+            font-size: 1em;
+            margin-bottom: 30px;
+            letter-spacing: 1.5px;
+            font-weight: normal;
+        }
+        
+        .key-icon {
+            font-size: 35px;
+            color: #1e3a8a;
+            margin-bottom: 30px;
+            position: relative;
+            display: inline-block;
+            filter: drop-shadow(0 0 5px rgba(30,58,138,0.5));
+        }
+        .key-icon::before, .key-icon::after {
+            content: ''; position: absolute; width: 20px; height: 20px; border: 1px solid #1e3a8a; opacity: 0.5;
+        }
+        .key-icon::before { top: -15px; left: -25px; border-right: none; border-bottom: none; }
+        .key-icon::after { bottom: -15px; right: -25px; border-left: none; border-top: none; }
+
+        .login-box h4 { color: #64748b; font-size: 0.9em; margin-bottom: 15px; font-weight: normal; }
+        .login-box p { color: #334155; font-size: 0.75em; line-height: 1.6; margin-bottom: 30px; text-transform: none; }
+
+        /* BRACKET LOGIN BUTTON */
+        .bracket-btn {
+            background: transparent;
+            border: none;
+            color: #60a5fa;
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.3em;
+            letter-spacing: 3px;
+            padding: 15px;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .bracket-btn::before, .bracket-btn::after {
+            content: ''; position: absolute; width: 10px; height: 100%; border: 2px solid #3b82f6;
+            top: 0; transition: all 0.3s;
+        }
+        .bracket-btn::before { left: 0; border-right: none; }
+        .bracket-btn::after { right: 0; border-left: none; }
+        .bracket-btn:hover { color: #fff; text-shadow: 0 0 10px #60a5fa; }
+        .bracket-btn:hover::before, .bracket-btn:hover::after { border-color: #fff; box-shadow: 0 0 10px rgba(96,165,250,0.5); }
+
+        .network-info {
+            text-align: center;
+            color: #1e293b;
+            font-size: 0.75em;
+            line-height: 1.8;
+            margin-top: auto;
+        }
+        .network-info h5 { color: #334155; margin-bottom: 10px; font-weight: normal; font-size: 1.1em; }
+        .network-info p { text-transform: none; margin-bottom: 20px; }
+        .bottom-stars { font-size: 20px; color: #1e293b; margin-top: 10px; }
+
+        /* SUCESSO MSG */
+        #sucesso-msg {
+            text-align: center;
+            padding: 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #05080c; border-left: 1px solid #0a1828; }
+        ::-webkit-scrollbar-thumb { background: #132435; }
+        ::-webkit-scrollbar-thumb:hover { background: #1e3a8a; }
+        
+        .footer-coords {
+            text-align: right; padding: 10px 40px; color: #1e293b; font-size: 0.7em; letter-spacing: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="hud-header">
+        <div class="online-status">
+            <div class="online-dot"></div>
+            <span>REDE SEGURA: ONLINE</span>
+            <div class="signal-bars"><div></div><div></div><div></div></div>
+        </div>
+        <div>TERMINAL MERCENÁRIO v2.4.7</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span>ENCRYPT: AES-256</span>
+            <span class="lock-icon">🔒</span>
+        </div>
+    </div>
+
+    <div class="main-wrapper">
+        
+        <!-- ESQUERDA -->
+        <div class="panel form-col">
+            <div class="header-title">
+                <div class="skull-logo">☠️</div>
+                <div>
+                    <h1>SINDICATO MERCENÁRIO</h1>
+                    <p>TERMINAL DE SOLICITAÇÃO DE SERVIÇOS (REDE SEGURA)</p>
+                </div>
+            </div>
+
+            <div id="sucesso-msg" style="display:none;">
+                <h2 style="color: #3b82f6; font-size: 2em; margin-bottom: 10px;">TRANSMISSÃO CONCLUÍDA</h2>
+                <p style="color: #64748b; margin-bottom: 30px; text-transform:none;">Dados criptografados e enviados ao Sindicato.</p>
+                <div style="background: rgba(59, 130, 246, 0.05); border: 1px solid #3b82f6; padding: 20px; width: 100%; max-width: 400px; margin-bottom: 40px;">
+                    <span style="color:#60a5fa; font-size: 0.8em;">CÓDIGO DE RASTREIO ALOCADO:</span><br>
+                    <strong id="cod-rastreio" style="color: #fff; font-size: 1.8em; letter-spacing: 4px;"></strong>
+                </div>
+                <a href="/contratar.html" class="cyber-btn" style="width:100%; max-width:400px;">NOVA SOLICITAÇÃO</a>
+            </div>
+
+            <form id="contractForm" onsubmit="enviarContrato(event)">
+                <input type="text" name="honeypot" style="display:none;">
+
+                <div class="input-row">
+                    <div class="input-group">
+                        <label>SEU NOME / ALCUNHA *</label>
+                        <input type="text" name="clientName" placeholder="Digite seu nome ou alcunha" required>
+                    </div>
+                    <div class="input-group">
+                        <label>MEIO DE CONTATO (PDA / RÁDIO)</label>
+                        <input type="text" name="contact" placeholder="Ex: Canal 12, Frequência 88.3, etc.">
+                    </div>
+                </div>
+
+                <div class="input-row">
+                    <div class="input-group">
+                        <label>TIPO DE MISSÃO</label>
+                        <select name="missionType" onchange="toggleOutroMissao(this.value)">
+                            <option value="Proteção/Escolta">Proteção/Escolta</option>
+                            <option value="Eliminação">Eliminação / Caça</option>
+                            <option value="Busca e Recuperação">Busca e Recuperação</option>
+                            <option value="Reconhecimento">Reconhecimento de Área</option>
+                            <option value="Outro">Outro (Especificar)</option>
+                        </select>
+                        <input type="text" id="missionTypeOutro" name="missionTypeOutro" placeholder="Especifique..." style="display: none; margin-top: 5px;">
+                    </div>
+                    <div class="input-group">
+                        <label>LOCALIZAÇÃO / SETOR</label>
+                        <input type="text" name="location" placeholder="Ex: Cordon, Rostok, etc.">
+                    </div>
+                </div>
+
+                <div class="input-group" style="margin-bottom: 25px;">
+                    <label>ALVO / OBJETIVO PRINCIPAL</label>
+                    <input type="text" name="target" placeholder="Quem ou o que é o alvo?">
+                </div>
+
+                <div class="input-group" style="margin-bottom: 25px;">
+                    <label>DESCRIÇÃO DETALHADA DO TRABALHO</label>
+                    <textarea name="description" rows="3" placeholder="Forneça o máximo de detalhes possível sobre o trabalho solicitado."></textarea>
+                </div>
+
+                <div class="input-row">
+                    <div class="input-group">
+                        <label>RECOMPENSA OFERECIDA (RU / ARTEFATOS)</label>
+                        <input type="text" name="reward" placeholder="Ex: 5000 RU, Artefato Vento da Liberdade, etc.">
+                    </div>
+                    <div class="input-group">
+                        <label class="risk-label">NÍVEL DE RISCO ESTIMADO</label>
+                        <select name="riskLevel" class="risk-select">
+                            <option value="low">Baixo (mínima resistência)</option>
+                            <option value="medium">Médio (ameaças comuns)</option>
+                            <option value="high">Alto (mutantes pesados/esquadrões)</option>
+                            <option value="extreme">Extremo (Garantia de Morte)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" class="cyber-btn" style="width: 100%; margin-top: 10px;">
+                    🔒 ENVIAR TRANSMISSÃO ENCRIPTADA <span>&raquo;</span>
+                </button>
+            </form>
+        </div>
+
+        <!-- DIREITA -->
+        <div class="panel sidebar-col">
+            <div class="login-box">
+                <h3>ACESSO DO CONTRATANTE</h3>
+                <div class="key-icon">🗝️</div>
+                <h4>Acesse sua solicitação</h4>
+                <p>Consulte, acompanhe ou gerencie suas transmissões anteriores.</p>
+                <a href="/login.html" class="bracket-btn">
+                    🔒 LOGIN <span>&raquo;</span>
+                </a>
+            </div>
+
+            <div class="network-info">
+                <h5>REDE MERCENÁRIA</h5>
+                <p>Comunicações seguras.<br>Contratos discretos.<br>Pagamento garantido.</p>
+                <div class="bottom-stars">☠️<br><span style="font-size:0.6em">★★★</span></div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="footer-coords">
+        N 51° 30' 12" E 30° 02' 45"
+    </div>
+
+    <script>
+        function toggleOutroMissao(val) {
+            const input = document.getElementById('missionTypeOutro');
+            if (val === 'Outro') {
+                input.style.display = 'block';
+                input.required = true;
+                input.focus();
+            } else {
+                input.style.display = 'none';
+                input.required = false;
+                input.value = '';
+            }
+        }
+
+        async function enviarContrato(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            
+            if (data.missionType === 'Outro') {
+                data.missionType = data.missionTypeOutro || 'Outro';
+            }
+            delete data.missionTypeOutro;
+
+            try {
+                const btn = e.target.querySelector('button');
+                btn.innerHTML = "🔒 TRANSMITINDO... <span>&raquo;</span>";
+                btn.disabled = true;
+
+                const res = await fetch('/api/public/contracts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await res.json();
+                if(res.ok && result.success) {
+                    document.getElementById('contractForm').style.display = 'none';
+                    document.getElementById('sucesso-msg').style.display = 'flex';
+                    document.getElementById('cod-rastreio').innerText = result.code || "REG-999X";
+                } else {
+                    alert('Falha na transmissão. Tente novamente.');
+                    btn.innerHTML = "🔒 ENVIAR TRANSMISSÃO ENCRIPTADA <span>&raquo;</span>";
+                    btn.disabled = false;
+                }
+            } catch(err) {
+                alert('Erro de conexão com o servidor local.');
+            }
+        }
+    </script>
+</body>
+</html>`;
+
+fs.writeFileSync('public/contratar.html', html);
+console.log("contratar.html reescrito com CSS avançado para ficar idêntico à imagem de referência.");

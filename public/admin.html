@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Administração</title>
+</head>
+<body onload="checkAuth(); loadAdminPanel();">
+    <nav id="mainNav"></nav>
+    <div class="container">
+        <div class="card" style="border-top:3px solid var(--accent);">
+            <h2 style="margin-top:0; color:var(--accent);">⚙ PAINEL ADMINISTRATIVO</h2>
+            <p class="text-muted">Gerenciamento central de facções, usuários e auditoria do sistema.</p>
+        </div>
+
+        <!-- System Overview -->
+        <div id="overviewCards" class="d-flex gap-1 flex-wrap mb-2"></div>
+
+        <!-- Faction Management -->
+        <div class="card">
+            <h3 style="color:var(--accent); margin-top:0;">🏴 GERENCIAR FACÇÕES</h3>
+            <div id="factionList"><p class="text-muted">Carregando facções...</p></div>
+        </div>
+
+        <!-- User Management -->
+        <div class="card">
+            <h3 style="color:var(--accent); margin-top:0;">👤 GERENCIAR USUÁRIOS</h3>
+            <div class="d-flex gap-1 mb-1">
+                <button onclick="showCreateUserForm()" class="btn-success w-auto" style="padding:8px 20px;">+ Novo Usuário</button>
+            </div>
+            <div id="createUserForm" class="hidden card" style="border:1px solid var(--accent); margin-bottom:20px;">
+                <h4 style="margin-top:0; color:var(--accent);">Criar Novo Usuário</h4>
+                <div class="d-flex gap-1">
+                    <input type="text" id="newUserName" placeholder="Nome" style="flex:1">
+                    <input type="text" id="newUserUsername" placeholder="Usuário (login)" style="flex:1">
+                </div>
+                <div class="d-flex gap-1">
+                    <input type="password" id="newUserPassword" placeholder="Senha (mín. 6 caracteres)" style="flex:1">
+                    <select id="newUserRole" style="flex:1">
+                        <option value="operator">Operator</option>
+                        <option value="viewer">Viewer</option>
+                        <option value="commander">Commander</option>
+                        <option value="faction_admin">Faction Admin</option>
+                        <option value="super_admin">Super Admin</option>
+                    </select>
+                </div>
+                <select id="newUserFaction">
+                    <option value="">-- Selecionar Facção --</option>
+                </select>
+                <div class="d-flex gap-1">
+                    <button onclick="createNewUser()" class="btn-success">Criar Usuário</button>
+                    <button onclick="document.getElementById('createUserForm').classList.add('hidden')" class="btn-secondary">Cancelar</button>
+                </div>
+            </div>
+            <div id="userList"><p class="text-muted">Carregando usuários...</p></div>
+        </div>
+
+        <!-- Audit Log -->
+        <div class="card">
+            <h3 style="color:var(--accent); margin-top:0;">📋 LOG DE AUDITORIA</h3>
+            <div id="auditLog"><p class="text-muted">Carregando...</p></div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+    <script>
+        async function loadAdminPanel() {
+            const user = getUser();
+            if (!user || user.role !== 'super_admin') {
+                window.location.href = '/dashboard.html';
+                return;
+            }
+            injectNav('/admin.html');
+            await Promise.all([loadOverview(), loadFactionList(), loadUserList(), loadAuditEntries()]);
+        }
+
+        async function loadOverview() {
+            try {
+                const data = await api('/api/admin/overview');
+                const container = document.getElementById('overviewCards');
+                container.innerHTML = [
+                    { label: 'Facções Ativas', value: data.activeFactions, color: 'var(--success)' },
+                    { label: 'Usuários Totais', value: data.totalUsers, color: 'var(--accent)' },
+                    { label: 'Contratos Pendentes', value: data.pendingContracts, color: 'var(--warning)' },
+                    { label: 'Eventos de Auditoria', value: data.auditEntries, color: 'var(--info)' }
+                ].map(s => `<div class="card flex-1" style="min-width:180px; text-align:center;"><h3 class="text-muted" style="margin:0;">${s.label}</h3><h1 style="font-size:2.5em; margin:10px 0; color:${s.color};">${s.value}</h1></div>`).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadFactionList() {
+            try {
+                const factions = await api('/api/factions');
+                const div = document.getElementById('factionList');
+                div.innerHTML = factions.map(f => {
+                    const theme = JSON.parse(f.theme_config || '{}');
+                    const color = theme.accentColor || '#888';
+                    return `<div class="card" style="border-left:4px solid ${color}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <strong style="font-size:1.2em; color:${color};">${f.name}</strong>
+                            <span class="text-muted" style="margin-left:10px;">(${f.code})</span><br>
+                            <small class="text-muted">Slug: ${f.slug} | Form Público: ${f.public_form_enabled ? 'Sim' : 'Não'}</small>
+                        </div>
+                        <div class="d-flex gap-1 align-center">
+                            <span class="badge ${f.active ? 'badge-active' : 'badge-rejected'}">${f.active ? 'ATIVA' : 'DESATIVADA'}</span>
+                            <button onclick="toggleFactionActive(${f.id})" class="${f.active ? 'btn-warning' : 'btn-success'} w-auto" style="padding:5px 15px;">${f.active ? 'Desativar' : 'Ativar'}</button>
+                        </div>
+                    </div>`;
+                }).join('');
+                // Also populate faction dropdown for user creation
+                const sel = document.getElementById('newUserFaction');
+                if (sel) sel.innerHTML = '<option value="">-- Sem Facção (Super Admin) --</option>' + factions.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function toggleFactionActive(id) {
+            if (!confirm('Confirmar alteração do status desta facção?')) return;
+            try {
+                await api(`/api/factions/${id}/toggle`, { method: 'PUT' });
+                showSuccess('Status da facção alterado.');
+                await loadFactionList();
+                await loadOverview();
+            } catch(e) { showError('Erro ao alterar facção.'); }
+        }
+
+        function showCreateUserForm() {
+            document.getElementById('createUserForm').classList.remove('hidden');
+        }
+
+        async function createNewUser() {
+            try {
+                const body = {
+                    name: document.getElementById('newUserName').value,
+                    username: document.getElementById('newUserUsername').value,
+                    password: document.getElementById('newUserPassword').value,
+                    role: document.getElementById('newUserRole').value,
+                    factionId: document.getElementById('newUserFaction').value ? parseInt(document.getElementById('newUserFaction').value) : null
+                };
+                await api('/api/users', { method: 'POST', body: JSON.stringify(body) });
+                showSuccess('Usuário criado com sucesso.');
+                document.getElementById('createUserForm').classList.add('hidden');
+                await loadUserList();
+            } catch(e) { showError(e.message || 'Erro ao criar usuário.'); }
+        }
+
+        async function loadUserList() {
+            try {
+                const users = await api('/api/users');
+                const div = document.getElementById('userList');
+                div.innerHTML = users.map(u => `<div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div>
+                        <strong style="font-size:1.1em;">${escapeHtml(u.name)}</strong> <span class="text-muted">(@${escapeHtml(u.username)})</span><br>
+                        <small class="text-accent">Role: <b>${u.role.toUpperCase()}</b></small>
+                        ${u.faction_name ? `<small class="text-muted"> | Facção: ${escapeHtml(u.faction_name)}</small>` : '<small class="text-muted"> | Super Admin Global</small>'}
+                    </div>
+                    <div class="d-flex gap-1">
+                        <span class="badge ${u.active ? 'badge-active' : 'badge-rejected'}">${u.active ? 'Ativo' : 'Inativo'}</span>
+                        ${u.username !== 'admin' ? `<button onclick="toggleUserActive(${u.id}, ${u.active})" class="${u.active ? 'btn-warning' : 'btn-success'} w-auto" style="padding:5px 10px; font-size:0.85em;">${u.active ? 'Desativar' : 'Ativar'}</button> <button onclick="deleteUser(${u.id})" class="btn-danger w-auto" style="padding:5px 10px; font-size:0.85em;">Excluir</button>` : ''}
+                    </div>
+                </div>`).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function toggleUserActive(id, currentActive) {
+            try {
+                await api(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify({ active: currentActive ? 0 : 1 }) });
+                showSuccess('Status alterado.');
+                await loadUserList();
+                await loadOverview();
+            } catch(e) { showError('Erro ao alterar usuário.'); }
+        }
+
+        async function deleteUser(id) {
+            if (!confirm('ATENÇÃO: Deseja apagar este usuário permanentemente?')) return;
+            try {
+                await api(`/api/users/${id}`, { method: 'DELETE' });
+                showSuccess('Usuário apagado com sucesso.');
+                await loadUserList();
+                await loadOverview();
+            } catch(e) { showError('Erro ao apagar usuário.'); }
+        }
+
+        async function loadAuditEntries() {
+            try {
+                const logs = await api('/api/audit?limit=50');
+                const div = document.getElementById('auditLog');
+                if (!logs || logs.length === 0) { div.innerHTML = '<p class="text-muted">Nenhum evento registrado.</p>'; return; }
+                div.innerHTML = logs.map(l => `<div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:8px 0; font-size:0.9em;">
+                    <div class="d-flex justify-between">
+                        <span><b class="text-accent">${escapeHtml(l.action)}</b> ${l.entity ? `em <span class="text-muted">${escapeHtml(l.entity)} #${l.entity_id || ''}</span>` : ''}</span>
+                        <small class="text-muted">${formatDateTime(l.created_at)}</small>
+                    </div>
+                    <small class="text-muted">Usuário: ${l.user_name || 'Sistema'} ${l.faction_name ? `(${l.faction_name})` : ''} | IP: ${l.ip_address || 'N/A'}</small>
+                </div>`).join('');
+            } catch(e) { console.error(e); }
+        }
+    </script>
+</body>
+</html>

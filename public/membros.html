@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Equipe</title>
+</head>
+<body onload="checkAuth(); carregarMembros()">
+    <nav id="mainNav"></nav>
+    <div class="container">
+        <div class="card">
+            <h3>Gerenciar Membro da Equipe</h3>
+            <form onsubmit="salvarMembro(event)">
+                <input type="hidden" id="editMembroId">
+                <div class="d-flex gap-1">
+                    <input type="text" id="mNome" placeholder="Nome Real do Membro" required style="flex:1">
+                    <input type="text" id="mUser" placeholder="Usuário (Login)" required style="flex:1">
+                </div>
+                <div class="d-flex gap-1">
+                    <input type="password" id="mPass" placeholder="Senha (deixe em branco para manter)" style="flex:1">
+                    <select id="mRole" required style="flex:1">
+                        <option value="operator">Operador</option>
+                        <option value="viewer">Visualizador</option>
+                        <option value="commander">Comandante</option>
+                        <option value="faction_admin">Admin da Facção</option>
+                    </select>
+                </div>
+                <div class="d-flex gap-1" style="margin-top:10px;">
+                    <button type="submit" id="btnSalvarMembro">Conceder Acesso / Atualizar</button>
+                    <button type="button" id="btnCancelarMembro" onclick="cancelarEdicaoMembro()" class="btn-secondary hidden">Cancelar Edição</button>
+                </div>
+            </form>
+        </div>
+        <div id="listaMembros" style="margin-top:20px;"></div>
+    </div>
+    <script src="app.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

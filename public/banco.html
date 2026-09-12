@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Banco da Facção</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .bank-summary {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .bank-card {
+            flex: 1;
+            background: var(--card);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+        .bank-card h3 {
+            margin: 0;
+            color: #aaa;
+            font-size: 1rem;
+            text-transform: uppercase;
+        }
+        .bank-card .value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .value.positive { color: var(--success); }
+        .value.negative { color: var(--danger); }
+        .value.neutral { color: var(--accent); }
+        
+        .transaction-list {
+            margin-top: 20px;
+        }
+        .transaction-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(0,0,0,0.4);
+            border-left: 4px solid #555;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .transaction-item.entrada { border-left-color: var(--success); }
+        .transaction-item.saida { border-left-color: var(--danger); }
+        
+        .t-details {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .t-title { font-weight: bold; font-size: 1.1rem; }
+        .t-meta { color: #888; font-size: 0.9rem; }
+        .t-amount { font-weight: bold; font-size: 1.2rem; }
+        .t-amount.entrada { color: var(--success); }
+        .t-amount.saida { color: var(--danger); }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        
+        @media (max-width: 600px) {
+            .bank-summary, .form-grid {
+                flex-direction: column;
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body onload="checkAuth(); loadBankData();">
+    <nav id="mainNav"></nav>
+
+    <div class="container">
+        <h2>🏦 CAIXA / BANCO DA FACÇÃO</h2>
+        <p>Gerencie as finanças, pagamentos de missões e recebimentos da sua facção.</p>
+        
+        <div class="bank-summary">
+            <div class="bank-card">
+                <h3>Saldo Atual</h3>
+                <div class="value neutral" id="bank-balance">0.00 RU</div>
+            </div>
+            <div class="bank-card">
+                <h3>Total Entradas</h3>
+                <div class="value positive" id="bank-entradas">0.00 RU</div>
+            </div>
+            <div class="bank-card">
+                <h3>Total Saídas</h3>
+                <div class="value negative" id="bank-saidas">0.00 RU</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Nova Transação</h3>
+            <form id="formTransaction" onsubmit="submitTransaction(event)">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Tipo de Transação *</label>
+                        <select id="t-type" required>
+                            <option value="">Selecione...</option>
+                            <option value="entrada">Entrada (Depósito / Ganho)</option>
+                            <option value="saida">Saída (Retirada / Pagamento)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Valor (RU) *</label>
+                        <input type="number" id="t-amount" min="1" step="0.01" required placeholder="Ex: 500.00">
+                    </div>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Justificativa / Motivo *</label>
+                        <input type="text" id="t-reason" required placeholder="Ex: Pagamento da missão X">
+                    </div>
+                    <div class="form-group">
+                        <label>Data *</label>
+                        <input type="date" id="t-date" required>
+                    </div>
+                </div>
+                <button type="submit" style="margin-top: 10px;">Registrar Transação</button>
+            </form>
+        </div>
+
+        <h3>Histórico de Transações</h3>
+        <div class="transaction-list" id="transaction-list">
+            <p style="color: #777;">Carregando histórico...</p>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        document.getElementById('t-date').valueAsDate = new Date();
+
+        async function loadBankData() {
+            try {
+                const data = await api('/api/bank');
+                
+                document.getElementById('bank-balance').innerText = data.balance.toFixed(2) + ' RU';
+                document.getElementById('bank-entradas').innerText = '+' + data.total_entradas.toFixed(2) + ' RU';
+                document.getElementById('bank-saidas').innerText = '-' + data.total_saidas.toFixed(2) + ' RU';
+                
+                const list = document.getElementById('transaction-list');
+                if (data.transactions.length === 0) {
+                    list.innerHTML = '<p style="color: #777;">Nenhuma transação registrada.</p>';
+                } else {
+                    list.innerHTML = data.transactions.map(t => {
+                        const isEntrada = t.type === 'entrada';
+                        const sign = isEntrada ? '+' : '-';
+                        const tClass = isEntrada ? 'entrada' : 'saida';
+                        const dateParts = t.transaction_date.split('-');
+                        let dateStr = t.transaction_date;
+                        if (dateParts.length === 3) dateStr = dateParts[2] + '/' + dateParts[1] + '/' + dateParts[0];
+                        
+                        return `
+                            <div class="transaction-item ${tClass}">
+                                <div class="t-details">
+                                    <div class="t-title">${escapeHtml(t.reason)}</div>
+                                    <div class="t-meta">📅 Data: ${dateStr} | 👤 Por: ${escapeHtml(t.user_name || t.username)}</div>
+                                </div>
+                                <div class="t-amount ${tClass}">
+                                    ${sign}${t.amount.toFixed(2)} RU
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (error) {
+                console.error(error);
+                document.getElementById('transaction-list').innerHTML = '<p style="color: var(--danger);">Erro ao carregar os dados.</p>';
+            }
+        }
+
+        async function submitTransaction(e) {
+            e.preventDefault();
+            
+            const type = document.getElementById('t-type').value;
+            const amount = document.getElementById('t-amount').value;
+            const reason = document.getElementById('t-reason').value;
+            const date = document.getElementById('t-date').value;
+            
+            try {
+                await apiForm('/api/bank', { type, amount, reason, transaction_date: date });
+                showSuccess('Transação registrada com sucesso!');
+                
+                document.getElementById('t-type').value = '';
+                document.getElementById('t-amount').value = '';
+                document.getElementById('t-reason').value = '';
+                document.getElementById('t-date').valueAsDate = new Date();
+                
+                loadBankData();
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>

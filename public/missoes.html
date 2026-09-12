@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><link rel="stylesheet" href="style.css"><title>Missões</title></head>
+<body onload="checkAuth(); carregarMissoes()">
+    <nav id="mainNav"></nav>
+    <div class="container">
+        
+        <div class="card" id="painelCriarMissao" style="display:none; border-top: 3px solid var(--accent);">
+            <h3 id="tituloFormMissao">Lançar Nova Operação Oficial</h3>
+            <form onsubmit="salvarNovaMissao(event)">
+                
+                <input type="hidden" id="editMissaoId">
+                
+                <input type="text" id="qTitulo" placeholder="Nome da Operação (Ex: Coleta no Pântano)" required>
+                <textarea id="qDesc" placeholder="Detalhes confidenciais e objetivos da operação..." style="height:80px;" required></textarea>
+                
+                <div style="display:flex; gap:10px; margin-bottom:10px;">
+                    <input type="number" id="qRep" placeholder="Recompensa: Reputação (+)" style="flex:1">
+                    <input type="number" id="qRu" placeholder="Recompensa: Rublos" style="flex:1">
+                    <input type="text" id="qItem" placeholder="Recompensa: Item (Opcional)" style="flex:1">
+                </div>
+
+                <div style="display:flex; gap:10px; margin-bottom:15px; align-items:center;">
+                    <select id="qDif" style="flex:1; padding:10px; background:rgba(0,0,0,0.6); color:#fff; border:1px solid var(--border); border-radius:4px;">
+                        <option value="Fácil">🟢 Dificuldade: Fácil</option>
+                        <option value="Médio">🟡 Dificuldade: Médio</option>
+                        <option value="Alto">🔴 Dificuldade: Alto</option>
+                        <option value="Suicida">💀 Dificuldade: Suicida</option>
+                    </select>
+                    <label style="flex:1; display:flex; align-items:center; gap:8px; color:#f39c12; font-weight:bold; cursor:pointer; background:rgba(243, 156, 18, 0.1); padding:8px; border-radius:4px;">
+                        <input type="checkbox" id="qTemp" style="width:20px; height:20px; margin:0;"> ⏳ Missão Urgente / Temporária
+                    </label>
+                </div>
+                
+                <div style="display:flex; gap:10px;">
+                    <button type="submit" id="btnSalvarMissao">Publicar no Mural</button>
+                    <button type="button" id="btnCancelarMissao" onclick="cancelarEdicaoMissao()" style="background:#555; display:none;">Cancelar Edição</button>
+                </div>
+            </form>
+        </div>
+
+        <h3 style="margin-top:20px; border-bottom:1px solid #333; padding-bottom:10px;">Mural de Operações Classificadas</h3>
+        
+        <div id="mural"></div>
+
+    </div>
+    <script src="app.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
