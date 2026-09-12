@@ -1,0 +1,16 @@
+V22 — RESET PELO PAINEL ADMINISTRATIVO
+
+Depois de substituir os arquivos e reiniciar o Wispbyte:
+1. Entre como Super Admin.
+2. Abra PAINEL ADMIN.
+3. Clique em RESET DE DADOS.
+4. Escolha a facção.
+5. Use RESETAR DADOS ou RESET TOTAL.
+
+RESETAR DADOS preserva os usuários da facção.
+RESET TOTAL também apaga os usuários vinculados à facção.
+
+Para limpar todo o servidor de uma vez, use os botões de RESET GLOBAL.
+O Super Admin global, facções, permissões, módulos e configurações são preservados.
+
+Um backup do database.db é criado automaticamente antes de cada operação.

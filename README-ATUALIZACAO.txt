@@ -167,8 +167,3 @@ V12 — CLIENTES MERCENÁRIOS
 - Exclusão gera evento DELETE_MERCENARY_CLIENT no Log de Auditoria.
 - Upload/troca de foto também registra UPDATE_MERCENARY_CLIENT_PHOTO no log.
 - Ajustado espaçamento superior da tela de Clientes para o menu não cobrir o cabeçalho/conteúdo.
-
-
-V21 — limpeza total dos dados operacionais
-- O pacote não envia mais database.db/data.sqlite preenchidos.
-- Execute `node reset-operational-data.js` após enviar os arquivos para zerar contratos, caixa, banco geral, comércio, missões, relatórios e auditoria.

@@ -126,7 +126,16 @@ BANCO GERAL
 - Somente Super Admin pode excluir lançamentos.
 - Movimentações são registradas no Log de Auditoria.
 
-
-V21 — limpeza total dos dados operacionais
-- O pacote não envia mais database.db/data.sqlite preenchidos.
-- Execute `node reset-operational-data.js` após enviar os arquivos para zerar contratos, caixa, banco geral, comércio, missões, relatórios e auditoria.
+V22 — RESET ADMINISTRATIVO PELO PAINEL
+- Nova aba RESET DE DADOS no Painel Administrativo.
+- Reset individual por facção.
+- RESETAR DADOS: limpa todo conteúdo operacional da facção e preserva usuários.
+- RESET TOTAL: limpa conteúdo operacional e usuários vinculados à facção.
+- ZERAR TODAS AS FACÇÕES: limpa todos os dados operacionais do servidor.
+- RESET TOTAL DO SERVIDOR: limpa todas as facções e usuários delas, preservando Super Admin global, facções, permissões, módulos e configurações.
+- Backup automático do database.db antes de qualquer reset.
+- O reset limpa: Caixa, Banco Geral, contratos mercenários, comércio, registros RP, experimentos, stalkers/membros, itens, missões, relatórios, pesquisas, histórico e Auditoria da facção.
+- Imagens sem referência são removidas da pasta uploads.
+- Confirmação digitada obrigatória antes de executar ações destrutivas.
+- Histórico de resets fica separado em admin_reset_history, para que o contador da Auditoria possa realmente voltar a zero.
+- Pacote não contém database.db/data.sqlite preenchidos.

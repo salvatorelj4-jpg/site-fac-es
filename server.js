@@ -124,6 +124,16 @@ async function initDb() {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )`);
 
+            await dbRun(`CREATE TABLE IF NOT EXISTS admin_reset_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                faction_id INTEGER,
+                reset_mode TEXT NOT NULL,
+                scope TEXT NOT NULL,
+                backup_file TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
             await dbRun(`CREATE TABLE IF NOT EXISTS mercenary_contracts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 public_code TEXT UNIQUE NOT NULL,
@@ -2985,6 +2995,200 @@ app.post('/api/bank', auth, async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: 'Erro ao salvar transação.' });
     }
+});
+
+
+async function tableHasColumn(tableName, columnName) {
+    if (!(await tableExists(tableName))) return false;
+    const cols = await getTableColumns(tableName);
+    return cols.includes(columnName);
+}
+
+async function backupDatabaseForReset(label='reset') {
+    const backupDir = path.join(DATA_DIR, 'backups');
+    fs.mkdirSync(backupDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const safeLabel = String(label).replace(/[^a-zA-Z0-9_-]/g, '-');
+    const backupPath = path.join(backupDir, `database-before-${safeLabel}-${stamp}.db`);
+    try { await dbRun('PRAGMA wal_checkpoint(FULL)'); } catch (_) {}
+    fs.copyFileSync(DB_PATH, backupPath);
+    return backupPath;
+}
+
+async function countFactionResetData(factionId, factionCode) {
+    const counts = {};
+    const factionTables = [
+        'faction_bank_transactions','faction_general_bank_transactions','faction_records','rp_experiments',
+        'commerce_transactions','stalkers','itens','missoes','relatorios','pesquisas','historico','audit_log'
+    ];
+    for (const table of factionTables) {
+        if (await tableHasColumn(table, 'faction_id')) {
+            const row = await dbGet(`SELECT COUNT(*) AS count FROM ${table} WHERE faction_id=?`, [factionId]);
+            counts[table] = Number(row?.count || 0);
+        }
+    }
+    if (factionCode === 'mercenaries' && await tableExists('mercenary_contracts')) {
+        const row = await dbGet(`SELECT COUNT(*) AS count FROM mercenary_contracts`);
+        counts.mercenary_contracts = Number(row?.count || 0);
+        if (await tableExists('contract_notes')) {
+            const notes = await dbGet(`SELECT COUNT(*) AS count FROM contract_notes`);
+            counts.contract_notes = Number(notes?.count || 0);
+        }
+    }
+    const users = await dbGet(`SELECT COUNT(*) AS count FROM users WHERE faction_id=?`, [factionId]);
+    counts.users = Number(users?.count || 0);
+    return counts;
+}
+
+async function cleanupOrphanUploads() {
+    const refs = new Set();
+    const addRef = (value) => {
+        if (!value || typeof value !== 'string') return;
+        const match = value.match(/\/uploads\/([^?"'#]+)/);
+        if (match) refs.add(path.basename(match[1]));
+    };
+
+    for (const table of ['stalkers','itens','missoes','relatorios','rp_experiments']) {
+        if (!(await tableExists(table)) || !(await tableHasColumn(table,'foto'))) continue;
+        const rows = await dbAll(`SELECT foto FROM ${table} WHERE foto IS NOT NULL AND foto != ''`);
+        rows.forEach(r => addRef(r.foto));
+    }
+    if (await tableExists('faction_records')) {
+        const rows = await dbAll(`SELECT extra_json FROM faction_records WHERE extra_json IS NOT NULL`);
+        for (const row of rows) {
+            try {
+                const obj = JSON.parse(row.extra_json || '{}');
+                if (obj?.photo) addRef(obj.photo);
+            } catch (_) {}
+        }
+    }
+
+    if (!fs.existsSync(UPLOAD_DIR)) return 0;
+    let removed = 0;
+    for (const name of fs.readdirSync(UPLOAD_DIR)) {
+        if (name === '.gitkeep') continue;
+        const full = path.join(UPLOAD_DIR, name);
+        try {
+            if (fs.statSync(full).isFile() && !refs.has(name)) {
+                fs.unlinkSync(full);
+                removed++;
+            }
+        } catch (_) {}
+    }
+    return removed;
+}
+
+async function resetFactionData(factionId, mode='operational') {
+    const faction = await dbGet(`SELECT id, code, name FROM factions WHERE id=?`, [factionId]);
+    if (!faction) throw new Error('Facção não encontrada.');
+
+    const tables = [
+        'faction_bank_transactions','faction_general_bank_transactions','faction_records','rp_experiments',
+        'commerce_transactions','stalkers','itens','missoes','relatorios','pesquisas','historico','audit_log'
+    ];
+
+    await dbRun('PRAGMA foreign_keys=OFF');
+    try {
+        await dbRun('BEGIN IMMEDIATE TRANSACTION');
+
+        // Mercenary contracts are global/public records dedicated to the Mercenary faction.
+        if (faction.code === 'mercenaries') {
+            if (await tableExists('contract_notes')) await dbRun(`DELETE FROM contract_notes`);
+            if (await tableExists('mercenary_contracts')) await dbRun(`DELETE FROM mercenary_contracts`);
+        }
+
+        for (const table of tables) {
+            if (await tableHasColumn(table, 'faction_id')) {
+                await dbRun(`DELETE FROM ${table} WHERE faction_id=?`, [factionId]);
+            }
+        }
+
+        if (mode === 'full') {
+            await dbRun(`DELETE FROM users WHERE faction_id=?`, [factionId]);
+        }
+
+        await dbRun('COMMIT');
+    } catch (e) {
+        try { await dbRun('ROLLBACK'); } catch (_) {}
+        throw e;
+    } finally {
+        try { await dbRun('PRAGMA foreign_keys=ON'); } catch (_) {}
+    }
+
+    const orphanUploadsRemoved = await cleanupOrphanUploads();
+    return { faction, orphanUploadsRemoved };
+}
+
+async function resetAllFactionData(mode='operational') {
+    const factions = await dbAll(`SELECT id, code, name FROM factions ORDER BY id`);
+    for (const faction of factions) {
+        await resetFactionData(faction.id, mode);
+    }
+    return factions;
+}
+
+
+app.get('/api/admin/reset-history', auth, requireCapability('faction:manage'), async (req, res, next) => {
+    try {
+        if (req.user.role !== 'super_admin') return res.status(403).json({ error:'Somente o Super Admin pode consultar resets.' });
+        const rows = await dbAll(`
+            SELECT h.*, u.name AS user_name, u.username, f.name AS faction_name
+            FROM admin_reset_history h
+            LEFT JOIN users u ON u.id=h.user_id
+            LEFT JOIN factions f ON f.id=h.faction_id
+            ORDER BY h.created_at DESC, h.id DESC LIMIT 20
+        `);
+        res.json(rows);
+    } catch (e) { next(e); }
+});
+
+app.get('/api/admin/factions/:id/reset-summary', auth, requireCapability('faction:manage'), async (req, res, next) => {
+    try {
+        if (req.user.role !== 'super_admin') return res.status(403).json({ error:'Somente o Super Admin pode resetar facções.' });
+        const faction = await dbGet(`SELECT id,code,name FROM factions WHERE id=?`, [req.params.id]);
+        if (!faction) return res.status(404).json({ error:'Facção não encontrada.' });
+        const counts = await countFactionResetData(faction.id, faction.code);
+        res.json({ faction, counts });
+    } catch (e) { next(e); }
+});
+
+app.post('/api/admin/factions/:id/reset', auth, requireCapability('faction:manage'), async (req, res, next) => {
+    try {
+        if (req.user.role !== 'super_admin') return res.status(403).json({ error:'Somente o Super Admin pode resetar facções.' });
+        const faction = await dbGet(`SELECT id,code,name FROM factions WHERE id=?`, [req.params.id]);
+        if (!faction) return res.status(404).json({ error:'Facção não encontrada.' });
+
+        const mode = req.body?.mode === 'full' ? 'full' : 'operational';
+        const expected = `RESETAR ${String(faction.name).toUpperCase()}`;
+        if (String(req.body?.confirmation || '').trim().toUpperCase() !== expected) {
+            return res.status(400).json({ error:`Confirmação inválida. Digite exatamente: ${expected}` });
+        }
+
+        const backupPath = await backupDatabaseForReset(`faction-${faction.code}-${mode}`);
+        const result = await resetFactionData(faction.id, mode);
+        await dbRun(`INSERT INTO admin_reset_history (user_id,faction_id,reset_mode,scope,backup_file) VALUES (?,?,?,?,?)`,
+            [req.user.id, faction.id, mode, 'faction', path.basename(backupPath)]);
+
+        res.json({ success:true, faction:result.faction, mode, backup:path.basename(backupPath), orphanUploadsRemoved:result.orphanUploadsRemoved });
+    } catch (e) { next(e); }
+});
+
+app.post('/api/admin/reset-all-factions', auth, requireCapability('faction:manage'), async (req, res, next) => {
+    try {
+        if (req.user.role !== 'super_admin') return res.status(403).json({ error:'Somente o Super Admin pode resetar o servidor.' });
+        const mode = req.body?.mode === 'full' ? 'full' : 'operational';
+        const expected = mode === 'full' ? 'RESETAR TUDO' : 'ZERAR TODAS';
+        if (String(req.body?.confirmation || '').trim().toUpperCase() !== expected) {
+            return res.status(400).json({ error:`Confirmação inválida. Digite exatamente: ${expected}` });
+        }
+
+        const backupPath = await backupDatabaseForReset(`all-factions-${mode}`);
+        const factions = await resetAllFactionData(mode);
+        await dbRun(`INSERT INTO admin_reset_history (user_id,faction_id,reset_mode,scope,backup_file) VALUES (?,?,?,?,?)`,
+            [req.user.id, null, mode, 'all', path.basename(backupPath)]);
+
+        res.json({ success:true, mode, factions:factions.length, backup:path.basename(backupPath) });
+    } catch (e) { next(e); }
 });
 
 app.get('/api/admin/overview', auth, requireCapability('faction:manage'), async (req, res) => {
