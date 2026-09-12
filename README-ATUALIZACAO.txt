@@ -173,3 +173,10 @@ V23 — reset rápido em cada aba de facção
 - Em qualquer aba de Duty, Ecologistas, Bandidos, Freedom e Mercenários, quando o usuário for Super Admin e estiver dentro do contexto da facção, aparece o botão 'Resetar Facção' no menu superior.
 - O botão chama o reset da própria facção, com escolha entre reset operacional e reset total.
 - Nenhum outro cargo consegue ver ou usar esse botão.
+
+
+V24 — CORREÇÃO DE CRIAÇÃO DE USUÁRIOS
+- Corrigido erro 500 em POST /api/users causado por bodyData inexistente.
+- Super Admin dentro de uma facção agora cria o usuário automaticamente na facção selecionada.
+- Painel Admin continua aceitando escolha explícita da facção.
+- PUT /api/users agora aceita atualizações parciais, evitando apagar nome/login/cargo ao apenas ativar ou desativar.

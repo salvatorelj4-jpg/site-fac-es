@@ -764,10 +764,10 @@ app.post('/api/users', auth, requireCapability('users:manage'), async (req, res,
             password: z.string().min(6).max(72),
             name: z.string().trim().min(2).max(100),
             role: z.enum(['viewer', 'operator', 'commander', 'faction_admin', 'super_admin']),
-            factionId: z.number().int().positive().nullable().optional()
+            factionId: z.coerce.number().int().positive().nullable().optional()
         });
 
-        const parsed = schema.safeParse(bodyData);
+        const parsed = schema.safeParse(req.body);
         if (!parsed.success) {
             return res.status(400).json({
                 error: 'Dados do usuário inválidos.',
@@ -777,19 +777,26 @@ app.post('/api/users', auth, requireCapability('users:manage'), async (req, res,
 
         const { username, password, name, role, factionId = null } = parsed.data;
 
-        // Only the global super admin can create another super admin.
         if (role === 'super_admin' && req.user.role !== 'super_admin') {
             return res.status(403).json({ error: 'Apenas o Super Admin pode criar outro Super Admin.' });
         }
 
-        // Faction Admin is always locked to their own faction.
-        // Any factionId sent manually by the browser is ignored for non-super-admin users.
+        // Super Admin inside a faction page inherits the selected faction context
+        // when the form itself does not send factionId.
+        const contextFaction = getFactionScope(req);
         const targetFaction = role === 'super_admin'
             ? null
-            : (req.user.role === 'super_admin' ? factionId : req.user.factionId);
+            : (req.user.role === 'super_admin'
+                ? (factionId || contextFaction)
+                : req.user.factionId);
 
         if (role !== 'super_admin' && !targetFaction) {
             return res.status(400).json({ error: 'Selecione uma facção para este usuário.' });
+        }
+
+        if (targetFaction) {
+            const faction = await dbGet(`SELECT id, active FROM factions WHERE id=?`, [targetFaction]);
+            if (!faction) return res.status(400).json({ error: 'Facção selecionada não existe.' });
         }
 
         const duplicate = await dbGet(
@@ -813,33 +820,93 @@ app.post('/api/users', auth, requireCapability('users:manage'), async (req, res,
             action: 'CREATE_USER',
             entity: 'users',
             entityId: result.lastID,
-            metadata: { username, role }
+            metadata: { username, role, factionId: targetFaction }
         });
 
-        res.status(201).json({ success: true, id: result.lastID });
-    } catch (e) { next(e); }
+        const created = await dbGet(
+            `SELECT u.id,u.username,u.name,u.faction_id,u.role,u.active,f.name AS faction_name
+             FROM users u LEFT JOIN factions f ON f.id=u.faction_id WHERE u.id=?`,
+            [result.lastID]
+        );
+
+        res.status(201).json({ success: true, user: created });
+    } catch (e) {
+        console.error('CREATE USER ERROR:', e);
+        next(e);
+    }
 });
 
 app.put('/api/users/:id', auth, requireCapability('users:manage'), async (req, res, next) => {
     try {
-        const { username, password, name, role, factionId, active } = req.body;
-        const targetFaction = req.user.role === 'super_admin' ? factionId : req.user.factionId;
-        let query = `UPDATE users SET username=?, name=?, role=?, faction_id=?, active=? WHERE id=?`;
-        let params = [username, name, role, targetFaction, active, req.params.id];
-        
-        if (password) {
-            query = `UPDATE users SET username=?, password_hash=?, name=?, role=?, faction_id=?, active=? WHERE id=?`;
-            params = [username, await bcrypt.hash(password, 10), name, role, targetFaction, active, req.params.id];
+        const current = await dbGet(`SELECT * FROM users WHERE id=?`, [req.params.id]);
+        if (!current) return res.status(404).json({ error: 'Usuário não encontrado.' });
+
+        // Non-super-admin managers may only manage users from their own faction.
+        if (req.user.role !== 'super_admin' && current.faction_id !== req.user.factionId) {
+            return res.status(403).json({ error: 'Você só pode gerenciar usuários da sua própria facção.' });
         }
-        
-        if (req.user.role !== 'super_admin') {
-            const t = await dbGet(`SELECT faction_id FROM users WHERE id=?`, [req.params.id]);
-            if (t.faction_id !== req.user.factionId) return res.status(403).json({ error: 'Forbidden' });
+
+        const nextUsername = req.body.username !== undefined ? String(req.body.username).trim() : current.username;
+        const nextName = req.body.name !== undefined ? String(req.body.name).trim() : current.name;
+        const nextRole = req.body.role !== undefined ? req.body.role : current.role;
+        const nextActive = req.body.active !== undefined ? (Number(req.body.active) ? 1 : 0) : current.active;
+
+        if (!['viewer','operator','commander','faction_admin','super_admin'].includes(nextRole)) {
+            return res.status(400).json({ error: 'Cargo inválido.' });
         }
-        
-        await dbRun(query, params);
-        res.json({ success: true });
-    } catch (e) { next(e); }
+        if (nextRole === 'super_admin' && req.user.role !== 'super_admin') {
+            return res.status(403).json({ error: 'Apenas o Super Admin pode atribuir este cargo.' });
+        }
+
+        const contextFaction = getFactionScope(req);
+        let nextFaction;
+        if (nextRole === 'super_admin') {
+            nextFaction = null;
+        } else if (req.user.role === 'super_admin') {
+            const suppliedFaction = req.body.factionId ?? req.body.faction_id;
+            nextFaction = suppliedFaction ? Number(suppliedFaction) : (current.faction_id || contextFaction);
+        } else {
+            nextFaction = req.user.factionId;
+        }
+
+        if (nextRole !== 'super_admin' && !nextFaction) {
+            return res.status(400).json({ error: 'Usuário precisa estar vinculado a uma facção.' });
+        }
+
+        const duplicate = await dbGet(
+            `SELECT id FROM users WHERE username=? COLLATE NOCASE AND id<>? LIMIT 1`,
+            [nextUsername, req.params.id]
+        );
+        if (duplicate) return res.status(409).json({ error: 'Este nome de usuário já está em uso.' });
+
+        let sql = `UPDATE users SET username=?, name=?, role=?, faction_id=?, active=?, updated_at=CURRENT_TIMESTAMP`;
+        const params = [nextUsername, nextName, nextRole, nextFaction, nextActive];
+
+        if (req.body.password) {
+            if (String(req.body.password).length < 6) return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres.' });
+            const hash = await bcrypt.hash(String(req.body.password), 10);
+            sql += `, password_hash=?`;
+            params.push(hash);
+        }
+
+        sql += ` WHERE id=?`;
+        params.push(req.params.id);
+        await dbRun(sql, params);
+
+        await auditLog({
+            userId:req.user.id,
+            factionId:nextFaction,
+            action:'UPDATE_USER',
+            entity:'users',
+            entityId:req.params.id,
+            metadata:{ username:nextUsername, role:nextRole, active:nextActive }
+        });
+
+        res.json({ success:true });
+    } catch(e) {
+        console.error('UPDATE USER ERROR:', e);
+        next(e);
+    }
 });
 
 app.delete('/api/users/:id', auth, requireSuperAdminDelete, requireCapability('users:manage'), async (req, res, next) => {
