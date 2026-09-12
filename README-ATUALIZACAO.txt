@@ -119,3 +119,51 @@ ATUALIZAÇÃO — VISÃO GLOBAL ADMINISTRATIVA
 - Atividade recente global com usuário e facção.
 - Atalhos Abrir Painel / Equipe / Caixa por facção.
 - Gerenciamento de Facções, Usuários e Auditoria mantido em seções inferiores.
+
+V11 — LIMPEZA PARA NOVA ADMINISTRAÇÃO
+- Removido "Índice de atividade" de todos os cards de facção no Painel Administrativo.
+- Incluído reset-operational-data.js para limpar os dados operacionais existentes.
+- O reset cria automaticamente um backup do database.db antes de apagar os registros.
+
+ZERADO PELO RESET:
+- audit_log
+- faction_bank_transactions (saldo das facções volta a 0)
+- mercenary_contracts
+- contract_notes
+- faction_records
+- rp_experiments
+- historico
+- stalkers
+- itens
+- missoes
+- relatorios
+- pesquisas
+
+PRESERVADO:
+- users
+- factions
+- permissions
+- faction_modules
+- configuracoes
+- logins/senhas
+- Super Admin
+
+COMO EXECUTAR NO WISPBYTE:
+1. Pare o servidor.
+2. Faça o upload/substituição dos arquivos desta atualização.
+3. No terminal, em /home/container, execute:
+   node reset-operational-data.js
+4. Confirme no console: "RESET OPERACIONAL CONCLUÍDO."
+5. Inicie o servidor novamente.
+
+O backup é salvo automaticamente em:
+ /home/container/backups/database-before-operational-reset-<data>.db
+
+V12 — CLIENTES MERCENÁRIOS
+- Removido o botão "Remover foto".
+- Adicionado "Excluir cadastro".
+- Excluir cadastro apaga também a foto associada.
+- Exclusão permitida somente ao Faction Admin dos Mercenários ou Super Admin.
+- Exclusão gera evento DELETE_MERCENARY_CLIENT no Log de Auditoria.
+- Upload/troca de foto também registra UPDATE_MERCENARY_CLIENT_PHOTO no log.
+- Ajustado espaçamento superior da tela de Clientes para o menu não cobrir o cabeçalho/conteúdo.

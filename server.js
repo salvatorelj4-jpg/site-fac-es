@@ -1482,7 +1482,82 @@ app.post('/api/mercenary/clients/:id/photo', auth, upload.single('photo'), async
             [JSON.stringify(extra), req.params.id, mercFactionId]
         );
 
+        await auditLog({
+            userId: req.user.id,
+            factionId: mercFactionId,
+            action: 'UPDATE_MERCENARY_CLIENT_PHOTO',
+            entity: 'clients',
+            entityId: row.id,
+            metadata: { photo: extra.photo },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent')
+        });
+
         res.json({ success: true, photo: extra.photo });
+    } catch (e) {
+        next(e);
+    }
+});
+
+app.delete('/api/mercenary/clients/:id', auth, async (req, res, next) => {
+    try {
+        if (!isMercenaryLeader(req)) {
+            return res.status(403).json({
+                error: 'Apenas o líder dos Mercenários pode excluir cadastros de clientes.'
+            });
+        }
+
+        const mercFactionId = await getMercenaryFactionId();
+        const row = await dbGet(
+            `SELECT id, title, extra_json
+             FROM faction_records
+             WHERE id=? AND faction_id=? AND module_code='clients'`,
+            [req.params.id, mercFactionId]
+        );
+
+        if (!row) {
+            return res.status(404).json({ error: 'Cliente não encontrado.' });
+        }
+
+        let extra = {};
+        try {
+            extra = JSON.parse(row.extra_json || '{}');
+        } catch (_) {}
+
+        // Remove the associated uploaded photo from disk, if it exists.
+        if (extra.photo) {
+            const filename = path.basename(extra.photo);
+            const photoPath = path.join(UPLOAD_DIR, filename);
+            try {
+                if (fs.existsSync(photoPath)) {
+                    fs.unlinkSync(photoPath);
+                }
+            } catch (photoError) {
+                console.error('Could not delete client photo:', photoError);
+            }
+        }
+
+        await dbRun(
+            `DELETE FROM faction_records
+             WHERE id=? AND faction_id=? AND module_code='clients'`,
+            [req.params.id, mercFactionId]
+        );
+
+        await auditLog({
+            userId: req.user.id,
+            factionId: mercFactionId,
+            action: 'DELETE_MERCENARY_CLIENT',
+            entity: 'clients',
+            entityId: row.id,
+            metadata: {
+                clientName: row.title,
+                deletedPhoto: Boolean(extra.photo)
+            },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent')
+        });
+
+        res.json({ success: true, deleted: true });
     } catch (e) {
         next(e);
     }
