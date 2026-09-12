@@ -273,21 +273,21 @@ function buildNav(currentPage) {
         { name: 'Caixa', url: '/banco.html' },
         { name: 'Stalkers', url: '/stalkers.html' },
         { name: 'Comércio', url: '/trade.html' },
-        { name: 'Estoque', url: '/inventory.html' },
+        { name: 'Estoque', url: '/estoque.html' },
         { name: 'Pesquisa', url: '/research.html' },
-        { name: 'Relatórios', url: '/reports.html' },
-        { name: 'Histórico', url: '/history.html' },
-        { name: 'Missões', url: '/missions.html' },
-        { name: 'Lista Negra', url: '/blacklist.html' }
+        { name: 'Relatórios', url: '/relatorios.html' },
+        { name: 'Histórico', url: '/historico.html' },
+        { name: 'Missões', url: '/missoes.html' },
+        { name: 'Lista Negra', url: '/listanegra.html' }
       ];
     } else if (faction === 'duty') {
       links = [
         { name: 'Painel', url: '/dashboard.html' },
         { name: 'Caixa', url: '/banco.html' },
         { name: 'Operadores', url: '/operators.html' },
-        { name: 'Missões', url: '/missions.html' },
+        { name: 'Missões', url: '/missoes.html' },
         { name: 'Arsenal', url: '/arsenal.html' },
-        { name: 'Relatórios', url: '/reports.html' },
+        { name: 'Relatórios', url: '/relatorios.html' },
         { name: 'Inteligência', url: '/intel.html' },
         { name: 'Logs', url: '/logs.html' }
       ];
@@ -295,7 +295,7 @@ function buildNav(currentPage) {
       links = [
         { name: 'Painel', url: '/dashboard.html' },
         { name: 'Caixa', url: '/banco.html' },
-        { name: 'Membros', url: '/members.html' },
+        { name: 'Membros', url: '/membros.html' },
         { name: 'Negócios', url: '/business.html' },
         { name: 'Territórios', url: '/territory.html' },
         { name: 'Informações', url: '/info.html' },
@@ -305,9 +305,9 @@ function buildNav(currentPage) {
       links = [
         { name: 'Painel', url: '/dashboard.html' },
         { name: 'Caixa', url: '/banco.html' },
-        { name: 'Membros', url: '/members.html' },
+        { name: 'Membros', url: '/membros.html' },
         { name: 'Postos', url: '/outposts.html' },
-        { name: 'Missões', url: '/missions.html' },
+        { name: 'Missões', url: '/missoes.html' },
         { name: 'Suprimentos', url: '/supplies.html' },
         { name: 'Intel', url: '/intel.html' },
         { name: 'Comunicações', url: '/comms.html' }

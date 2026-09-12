@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
+  <title>supplies</title>
+</head>
+<body onload="initFactionModule()">
+  <nav id="mainNav"></nav>
+  <div class="container">
+    <div class="card" style="border-top:3px solid var(--accent);">
+      <h2 id="moduleTitle" class="text-accent" style="margin-top:0;">MÓDULO</h2>
+      <p id="moduleSubtitle" class="text-muted">Registros RP da facção</p>
+      <button id="newBtn" class="btn-success w-auto" onclick="openRecordForm()">+ NOVO REGISTRO</button>
+    </div>
+
+    <div id="recordForm" class="card hidden" style="border:1px solid var(--accent);">
+      <h3 id="formTitle" class="text-accent">NOVO REGISTRO</h3>
+      <input id="recordTitle" type="text" placeholder="Título">
+      <div class="d-flex gap-1 flex-wrap">
+        <div style="flex:1; min-width:220px;"><label id="labelCategory">Categoria</label><input id="recordCategory" type="text"></div>
+        <div style="flex:1; min-width:220px;"><label>Status</label><select id="recordStatus"></select></div>
+      </div>
+      <div class="d-flex gap-1 flex-wrap">
+        <div style="flex:1; min-width:220px;"><label id="labelSubject">Assunto</label><input id="recordSubject" type="text"></div>
+        <div style="flex:1; min-width:220px;"><label id="labelLocation">Local</label><input id="recordLocation" type="text"></div>
+      </div>
+      <label>Descrição / contexto RP</label>
+      <textarea id="recordDescription" rows="5"></textarea>
+      <label>Detalhes adicionais</label>
+      <textarea id="recordExtra" rows="3"></textarea>
+      <div class="d-flex gap-1">
+        <button class="btn-success" onclick="saveFactionRecord()">SALVAR</button>
+        <button class="btn-secondary" onclick="closeRecordForm()">CANCELAR</button>
+      </div>
+    </div>
+
+    <div id="recordList"></div>
+  </div>
+  <script>window.FACTION_MODULE = "supplies";</script>
+  <script src="app.js"></script>
+  <script src="faction-module.js"></script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="style.css">
+  <title>Pesquisa RP</title>
+</head>
+<body onload="initResearchRp()">
+<nav id="mainNav"></nav>
+<div class="container">
+  <div class="card" style="border-top:3px solid var(--accent);">
+    <h2 class="text-accent" style="margin-top:0;">🧪 PESQUISA ECologista — LABORATÓRIO RP</h2>
+    <p class="text-muted">Experimentos fictícios de mutantes e artefatos para criação de histórias, missões, consequências e eventos de RP.</p>
+    <button id="newExperimentBtn" class="btn-success w-auto" onclick="openExperimentForm()">+ NOVO EXPERIMENTO RP</button>
+  </div>
+
+  <div class="card" style="border-left:3px solid var(--warning);">
+    <b>Uso narrativo:</b>
+    <span class="text-muted">registre hipóteses, amostras fictícias, risco, observações e efeitos no mundo do RP. O campo “procedimento” deve descrever apenas ações narrativas do universo do jogo.</span>
+  </div>
+
+  <div id="experimentForm" class="card hidden" style="border:1px solid var(--accent);">
+    <h3 id="experimentFormTitle" class="text-accent">NOVO EXPERIMENTO</h3>
+    <input id="expTitle" placeholder="Título do experimento">
+    <div class="d-flex gap-1 flex-wrap">
+      <select id="expType" style="flex:1;min-width:200px;">
+        <option value="mutante">Mutante</option>
+        <option value="artefato">Artefato</option>
+      </select>
+      <input id="expSubject" style="flex:2;min-width:260px;" placeholder="Mutante, artefato, amostra ou codinome fictício">
+    </div>
+    <div class="d-flex gap-1 flex-wrap">
+      <select id="expRisk" style="flex:1;min-width:200px;">
+        <option value="baixo">Risco baixo</option>
+        <option value="moderado">Risco moderado</option>
+        <option value="alto">Risco alto</option>
+        <option value="critico">Risco crítico</option>
+      </select>
+      <select id="expStatus" style="flex:1;min-width:200px;">
+        <option value="planejado">Planejado</option>
+        <option value="em_andamento">Em andamento</option>
+        <option value="pausado">Pausado</option>
+        <option value="concluido">Concluído</option>
+        <option value="falhou">Falhou</option>
+      </select>
+    </div>
+    <label>Hipótese narrativa</label><textarea id="expHypothesis" rows="3" placeholder="O que os cientistas acreditam que pode acontecer no RP?"></textarea>
+    <label>Procedimento RP</label><textarea id="expProcedure" rows="4" placeholder="Descreva apenas a cena/procedimento fictício do universo do jogo."></textarea>
+    <label>Resultado esperado</label><textarea id="expExpected" rows="3"></textarea>
+    <label>Resultado observado</label><textarea id="expObserved" rows="3"></textarea>
+    <label>Efeitos para o RP</label><textarea id="expEffects" rows="3" placeholder="Nova missão, mutação, anomalia, recompensa, ameaça, pista..."></textarea>
+    <label>Notas</label><textarea id="expNotes" rows="2"></textarea>
+    <div class="d-flex gap-1">
+      <button class="btn-success" onclick="saveExperiment()">SALVAR EXPERIMENTO</button>
+      <button class="btn-secondary" onclick="closeExperimentForm()">CANCELAR</button>
+    </div>
+  </div>
+
+  <div id="experimentList"></div>
+</div>
+<script src="app.js"></script>
+<script>
+let currentExperimentId = null;
+
+function canManageResearch() {
+  const u = getUser();
+  return u && ['super_admin','faction_admin','commander','operator'].includes(u.role);
+}
+function initResearchRp() {
+  checkAuth();
+  document.getElementById('newExperimentBtn').style.display = canManageResearch() ? '' : 'none';
+  loadExperiments();
+}
+function openExperimentForm(e=null) {
+  if (!canManageResearch()) return showError('Seu cargo não pode gerenciar experimentos.');
+  currentExperimentId = e?.id || null;
+  document.getElementById('experimentFormTitle').textContent = currentExperimentId ? 'EDITAR EXPERIMENTO' : 'NOVO EXPERIMENTO';
+  document.getElementById('expTitle').value = e?.title || '';
+  document.getElementById('expType').value = e?.experiment_type || 'mutante';
+  document.getElementById('expSubject').value = e?.subject || '';
+  document.getElementById('expRisk').value = e?.risk_level || 'baixo';
+  document.getElementById('expStatus').value = e?.status || 'planejado';
+  document.getElementById('expHypothesis').value = e?.hypothesis || '';
+  document.getElementById('expProcedure').value = e?.procedure_summary || '';
+  document.getElementById('expExpected').value = e?.expected_result || '';
+  document.getElementById('expObserved').value = e?.observed_result || '';
+  document.getElementById('expEffects').value = e?.rp_effects || '';
+  document.getElementById('expNotes').value = e?.notes || '';
+  document.getElementById('experimentForm').classList.remove('hidden');
+}
+function closeExperimentForm() {
+  currentExperimentId = null;
+  document.getElementById('experimentForm').classList.add('hidden');
+}
+async function saveExperiment() {
+  const body = {
+    title: document.getElementById('expTitle').value.trim(),
+    experimentType: document.getElementById('expType').value,
+    subject: document.getElementById('expSubject').value.trim(),
+    hypothesis: document.getElementById('expHypothesis').value.trim(),
+    riskLevel: document.getElementById('expRisk').value,
+    status: document.getElementById('expStatus').value,
+    procedureSummary: document.getElementById('expProcedure').value.trim(),
+    expectedResult: document.getElementById('expExpected').value.trim(),
+    observedResult: document.getElementById('expObserved').value.trim(),
+    rpEffects: document.getElementById('expEffects').value.trim(),
+    notes: document.getElementById('expNotes').value.trim()
+  };
+  if (body.title.length < 3 || body.subject.length < 2) return showError('Informe título e objeto da pesquisa.');
+  try {
+    await api(currentExperimentId ? `/api/rp-experiments/${currentExperimentId}` : '/api/rp-experiments',
+      { method: currentExperimentId ? 'PUT' : 'POST', body });
+    showSuccess('Experimento RP salvo.');
+    closeExperimentForm();
+    loadExperiments();
+  } catch(e) { console.error(e); }
+}
+async function deleteExperiment(id) {
+  if (!confirm('Excluir este experimento RP?')) return;
+  try {
+    await api(`/api/rp-experiments/${id}`, { method:'DELETE' });
+    showSuccess('Experimento excluído.');
+    loadExperiments();
+  } catch(e) { console.error(e); }
+}
+async function loadExperiments() {
+  const list = document.getElementById('experimentList');
+  try {
+    const rows = await api('/api/rp-experiments') || [];
+    if (!rows.length) {
+      list.innerHTML = '<div class="card"><p class="text-muted">Nenhum experimento RP registrado.</p></div>';
+      return;
+    }
+    list.innerHTML = rows.map(e => `
+      <div class="card" style="border-left:3px solid ${e.experiment_type === 'mutante' ? 'var(--danger)' : 'var(--warning)'};">
+        <div class="d-flex justify-between gap-1 flex-wrap">
+          <div style="flex:1;min-width:260px;">
+            <h3 class="text-accent" style="margin-top:0;">${escapeHtml(e.title)}</h3>
+            <p><b>Tipo:</b> ${escapeHtml(e.experiment_type)} | <b>Objeto:</b> ${escapeHtml(e.subject)} | <b>Risco:</b> ${escapeHtml(e.risk_level)} | <b>Status:</b> ${escapeHtml(e.status)}</p>
+            ${e.hypothesis ? `<p><b>Hipótese:</b> ${escapeHtml(e.hypothesis)}</p>` : ''}
+            ${e.procedure_summary ? `<p><b>Procedimento RP:</b> ${escapeHtml(e.procedure_summary)}</p>` : ''}
+            ${e.expected_result ? `<p><b>Esperado:</b> ${escapeHtml(e.expected_result)}</p>` : ''}
+            ${e.observed_result ? `<p><b>Observado:</b> ${escapeHtml(e.observed_result)}</p>` : ''}
+            ${e.rp_effects ? `<p><b>Efeitos no RP:</b> ${escapeHtml(e.rp_effects)}</p>` : ''}
+            ${e.notes ? `<p class="text-muted">${escapeHtml(e.notes)}</p>` : ''}
+            <small class="text-muted">Atualizado: ${formatDateTime(e.updated_at)}${e.created_by_name ? ` • por ${escapeHtml(e.created_by_name)}` : ''}</small>
+          </div>
+          ${canManageResearch() ? `<div class="d-flex gap-1">
+            <button class="btn-secondary w-auto" onclick='openExperimentForm(${JSON.stringify(e).replace(/'/g,"&#39;")})'>Editar</button>
+            <button class="btn-danger w-auto" onclick="deleteExperiment(${e.id})">Excluir</button>
+          </div>` : ''}
+        </div>
+      </div>`).join('');
+  } catch(e) {
+    list.innerHTML = `<div class="card"><p class="text-danger">${escapeHtml(e.message || 'Erro ao carregar pesquisas.')}</p></div>`;
+  }
+}
+</script>
+</body>
+</html>
