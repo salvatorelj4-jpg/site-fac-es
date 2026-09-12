@@ -150,6 +150,12 @@
         transactionDateInput.min = today;
         transactionDateInput.value = today;
 
+        function getCurrentDisplayedBalance() {
+            const raw = (document.getElementById('bank-balance').innerText || '0').replace(/[^0-9,.-]/g, '').replace(',', '.');
+            const value = parseFloat(raw);
+            return Number.isFinite(value) ? value : 0;
+        }
+
         async function loadBankData() {
             try {
                 const data = await api('/api/bank');
@@ -196,7 +202,23 @@
             const amount = document.getElementById('t-amount').value;
             const reason = document.getElementById('t-reason').value;
             const date = document.getElementById('t-date').value;
-            
+            const numericAmount = Number(amount);
+
+            if (!type || !amount || !reason || !date) {
+                return showError('Todos os campos são obrigatórios (tipo, valor, justificativa, data).');
+            }
+
+            if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+                return showError('Informe um valor válido maior que zero.');
+            }
+
+            if (type === 'saida') {
+                const currentBalance = getCurrentDisplayedBalance();
+                if (numericAmount > currentBalance) {
+                    return showError(`Saldo insuficiente. Saldo atual: ${currentBalance.toFixed(2)} RU.`);
+                }
+            }
+
             if (date < getLocalToday()) {
                 return showError('Não é permitido registrar transações com data anterior à data atual.');
             }
@@ -206,7 +228,7 @@
                     method: 'POST',
                     body: {
                         type,
-                        amount: Number(amount),
+                        amount: numericAmount,
                         reason,
                         transaction_date: date
                     }
