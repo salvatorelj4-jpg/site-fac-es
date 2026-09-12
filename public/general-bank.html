@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="special-factions.css">
+<title>Banco Geral da Facção</title>
+<style>
+.gb-wrap{max-width:1180px;margin:24px auto;padding:45px 18px 70px}
+.gb-hero{background:linear-gradient(135deg,rgba(8,13,18,.98),rgba(2,5,8,.98));border:1px solid var(--border);border-top:3px solid var(--accent);padding:24px}
+.gb-label{font-size:11px;letter-spacing:3px;color:var(--text-muted)}
+.gb-title{font-size:27px;letter-spacing:2px;color:var(--accent);margin:6px 0}
+.gb-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:14px 0}
+.gb-stat{background:#03070b;border:1px solid var(--border);padding:20px;text-align:center}
+.gb-stat b{display:block;font-size:28px;margin-bottom:6px}
+.gb-stat small{color:var(--text-muted);letter-spacing:1px}
+.gb-form-note{border-left:3px solid var(--accent);padding:10px 12px;margin-bottom:12px;color:var(--text-muted);background:rgba(0,0,0,.22)}
+.gb-history{display:grid;gap:10px;margin-top:14px}
+.gb-entry{display:grid;grid-template-columns:1fr auto;gap:16px;align-items:center;background:#03070b;border:1px solid var(--border);padding:15px}
+.gb-positive{color:#32d583}.gb-negative{color:#ef5350}
+@media(max-width:700px){.gb-stats{grid-template-columns:1fr}.gb-entry{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<nav id="mainNav"></nav>
+<main class="gb-wrap">
+<section class="gb-hero">
+<div class="gb-label">RESERVA CENTRAL / CONTROLE DA LIDERANÇA</div>
+<h1 class="gb-title" id="gbTitle">BANCO GERAL DA FACÇÃO</h1>
+<p class="text-muted">Reserva separada do Caixa/Tesouraria operacional da facção.</p>
+</section>
+
+<section class="gb-stats">
+<div class="gb-stat"><b id="gbBalance">0.00 RU</b><small>SALDO GERAL</small></div>
+<div class="gb-stat"><b id="gbIn" class="gb-positive">+0.00 RU</b><small>TOTAL DE ENTRADAS</small></div>
+<div class="gb-stat"><b id="gbOut" class="gb-negative">-0.00 RU</b><small>TOTAL DE RETIRADAS</small></div>
+</section>
+
+<section id="gbFormPanel" class="sf-panel hidden">
+<h2 class="sf-title" style="font-size:18px">MOVIMENTAÇÃO DA LIDERANÇA</h2>
+<div class="gb-form-note">Somente o líder da facção pode adicionar ou retirar dinheiro. O Super Admin também pode operar ao entrar no contexto da facção.</div>
+<div class="sf-form">
+<div><label>TIPO</label><select id="gbType"><option value="">Selecione</option><option value="entrada">ADICIONAR DINHEIRO</option><option value="saida">RETIRAR DINHEIRO</option></select></div>
+<div><label>VALOR (RU)</label><input id="gbAmount" type="number" min="0.01" step="0.01"></div>
+<div class="full"><label>MOTIVO / REGISTRO</label><input id="gbReason" placeholder="Ex: Reserva inicial, repasse da liderança..."></div>
+<div><label>DATA</label><input id="gbDate" type="date"></div>
+<div style="align-self:end"><button class="btn-success" onclick="saveGeneralBank()">REGISTRAR MOVIMENTAÇÃO</button></div>
+</div>
+</section>
+
+<section class="sf-panel" id="gbReadOnly" style="display:none">
+<div class="gb-form-note">Modo somente leitura. Apenas o líder da facção pode registrar entradas e retiradas.</div>
+</section>
+
+<section>
+<h2 class="sf-title" style="font-size:18px;margin-top:20px">HISTÓRICO DO BANCO GERAL</h2>
+<div id="gbHistory" class="gb-history"></div>
+</section>
+</main>
+
+<script src="app.js"></script>
+<script>
+function localToday(){
+ const d=new Date();
+ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function money(v){return Number(v||0).toFixed(2)+' RU'}
+function lockGeneralDate(){
+ const today=localToday();
+ gbDate.min=today;
+ gbDate.value=today;
+ gbDate.addEventListener('change',()=>{
+   const now=localToday();
+   gbDate.min=now;
+   if(gbDate.value<now){
+     gbDate.value=now;
+     showError('Datas anteriores ao dia atual não são permitidas.');
+   }
+ });
+}
+async function loadGeneralBank(){
+ checkAuth();
+ lockGeneralDate();
+ const data=await api('/api/general-bank');
+ gbTitle.textContent=`BANCO GERAL — ${String(data.faction?.name||'FACÇÃO').toUpperCase()}`;
+ gbBalance.textContent=money(data.balance);
+ gbIn.textContent='+'+money(data.total_entradas);
+ gbOut.textContent='-'+money(data.total_saidas);
+ gbFormPanel.classList.toggle('hidden',!data.can_manage);
+ gbReadOnly.style.display=data.can_manage?'none':'block';
+
+ const isSuper=getUser()?.role==='super_admin';
+ gbHistory.innerHTML=(data.transactions||[]).map(t=>`
+ <article class="gb-entry">
+   <div>
+     <span class="sf-tag">${t.type==='entrada'?'ENTRADA':'RETIRADA'}</span>
+     <h3 style="margin:7px 0;color:var(--accent)">${escapeHtml(t.reason)}</h3>
+     <div class="text-muted">${escapeHtml(t.user_name||t.username||'Sistema')} • ${escapeHtml(String(t.transaction_date||''))}</div>
+   </div>
+   <div>
+     <b class="${t.type==='entrada'?'gb-positive':'gb-negative'}">${t.type==='entrada'?'+':'-'}${money(t.amount)}</b>
+     ${isSuper?`<button class="btn-danger w-auto" style="display:block;margin-top:8px" onclick="deleteGeneralBank(${t.id})">EXCLUIR</button>`:''}
+   </div>
+ </article>`).join('')||'<div class="sf-empty">Nenhuma movimentação registrada no Banco Geral.</div>';
+}
+async function saveGeneralBank(){
+ const type=gbType.value,amount=Number(gbAmount.value),reason=gbReason.value.trim(),date=gbDate.value;
+ const today=localToday();
+ if(!type||!amount||!reason||!date)return showError('Preencha todos os campos.');
+ if(date<today){gbDate.value=today;return showError('Datas anteriores ao dia atual não são permitidas.');}
+ await api('/api/general-bank',{method:'POST',body:{type,amount,reason,transaction_date:date}});
+ showSuccess('Movimentação registrada no Banco Geral.');
+ gbAmount.value='';gbReason.value='';gbDate.value=localToday();
+ await loadGeneralBank();
+}
+async function deleteGeneralBank(id){
+ if(getUser()?.role!=='super_admin')return showError('Somente o Super Admin pode excluir lançamentos.');
+ if(!confirm('Excluir permanentemente este lançamento do Banco Geral?'))return;
+ await api(`/api/general-bank/${id}`,{method:'DELETE'});
+ showSuccess('Lançamento excluído.');
+ await loadGeneralBank();
+}
+loadGeneralBank();
+</script>
+</body>
+</html>

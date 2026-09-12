@@ -273,19 +273,19 @@ function getThemeClass(slug) {
 function getFactionLinks(faction, role = null) {
   const maps = {
     duty: [
-      ['Comando','/duty-dashboard.html'],['Tesouraria','/duty-bank.html'],['Efetivo','/duty-operators.html'],['Ordens','/duty-missions.html'],['Arsenal','/duty-arsenal.html'],['Relatórios','/duty-reports.html'],['Inteligência','/duty-intel.html'],['Disciplina','/duty-logs.html']
+      ['Comando','/duty-dashboard.html'],['Tesouraria','/duty-bank.html'],['Banco Geral','/general-bank.html'],['Efetivo','/duty-operators.html'],['Ordens','/duty-missions.html'],['Arsenal','/duty-arsenal.html'],['Relatórios','/duty-reports.html'],['Inteligência','/duty-intel.html'],['Disciplina','/duty-logs.html']
     ],
     ecologists: [
-      ['Bunker','/eco-dashboard.html'],['Finanças','/eco-bank.html'],['Stalkers','/eco-stalkers.html'],['Aquisições','/eco-trade.html'],['Depósito','/eco-inventory.html'],['Laboratório','/eco-research.html'],['Relatórios','/eco-reports.html'],['Arquivos','/eco-history.html'],['Expedições','/eco-expeditions.html'],['Risco Biológico','/eco-blacklist.html']
+      ['Bunker','/eco-dashboard.html'],['Finanças','/eco-bank.html'],['Banco Geral','/general-bank.html'],['Stalkers','/eco-stalkers.html'],['Aquisições','/eco-trade.html'],['Depósito','/eco-inventory.html'],['Laboratório','/eco-research.html'],['Relatórios','/eco-reports.html'],['Arquivos','/eco-history.html'],['Expedições','/eco-expeditions.html'],['Risco Biológico','/eco-blacklist.html']
     ],
     bandits: [
-      ['Covil','/bandit-dashboard.html'],['Caixa Preto','/bandit-bank.html'],['Gangue','/bandit-members.html'],['Negócios','/bandit-business.html'],['Territórios','/bandit-territory.html'],['Informantes','/bandit-info.html'],['Livro Negro','/bandit-records.html']
+      ['Covil','/bandit-dashboard.html'],['Caixa Preto','/bandit-bank.html'],['Banco Geral','/general-bank.html'],['Gangue','/bandit-members.html'],['Negócios','/bandit-business.html'],['Territórios','/bandit-territory.html'],['Informantes','/bandit-info.html'],['Livro Negro','/bandit-records.html']
     ],
     freedom: [
-      ['Base Livre','/freedom-dashboard.html'],['Fundo Comum','/freedom-bank.html'],['Companheiros','/freedom-members.html'],['Postos Livres','/freedom-outposts.html'],['Incursões','/freedom-missions.html'],['Suprimentos','/freedom-supplies.html'],['Reconhecimento','/freedom-intel.html'],['Rádio Livre','/freedom-comms.html']
+      ['Base Livre','/freedom-dashboard.html'],['Fundo Comum','/freedom-bank.html'],['Banco Geral','/general-bank.html'],['Companheiros','/freedom-members.html'],['Postos Livres','/freedom-outposts.html'],['Incursões','/freedom-missions.html'],['Suprimentos','/freedom-supplies.html'],['Reconhecimento','/freedom-intel.html'],['Rádio Livre','/freedom-comms.html']
     ],
     mercenaries: [
-      ['Painel','/dashboard.html'],['Caixa','/banco.html'],['Contratos','/contratos.html'],['Clientes','/clients.html'],['Operações','/operations.html'],['Inteligência','/intel.html'],['Arquivo Confidencial','/archive.html']
+      ['Painel','/dashboard.html'],['Caixa','/banco.html'],['Banco Geral','/general-bank.html'],['Contratos','/contratos.html'],['Clientes','/clients.html'],['Operações','/operations.html'],['Inteligência','/intel.html'],['Arquivo Confidencial','/archive.html']
     ]
   };
   let links=(maps[faction]||[['Painel','/dashboard.html']]).map(([name,url])=>({name,url}));

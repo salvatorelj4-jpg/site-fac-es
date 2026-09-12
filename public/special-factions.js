@@ -16,7 +16,24 @@ function sfCanDelete(){const u=sfUser();return !!u&&u.role==='super_admin'}
 function sfEsc(v){return escapeHtml(String(v??''))}
 function sfDate(v){return v?formatDateTime(v):'-'}
 async function sfDashboard(){sfInit();const d=await api('/api/faction-dashboard');const c=window.SF_PAGE.dashboard;document.getElementById('sfTitle').textContent=c.title;document.getElementById('sfSub').textContent=c.sub;document.getElementById('sfCode').setAttribute('data-code',sfCfg().code);const vals=c.stats(d);document.getElementById('sfStats').innerHTML=vals.map(x=>`<div class="sf-stat"><b>${sfEsc(x[1])}</b><span>${sfEsc(x[0])}</span></div>`).join('');const mods={};(d.records||[]).forEach(r=>{mods[r.module_code]=(mods[r.module_code]||0)+Number(r.qty||0)});document.getElementById('sfOps').innerHTML=c.panels(d,mods);document.getElementById('sfRecent').innerHTML=(d.latest||[]).map(a=>`<div class="sf-event"><b>${sfEsc(a.action)}</b><div class="sf-meta">${sfEsc(a.user_name||'Sistema')} • ${sfDate(a.created_at)}</div></div>`).join('')||'<div class="sf-empty">Sem atividade recente.</div>'}
-async function sfBank(){sfInit();const page=window.SF_PAGE;document.getElementById('bankTitle').textContent=page.title;document.getElementById('bankSub').textContent=page.sub;const inp=document.getElementById('bDate');const today=new Date().toISOString().slice(0,10);inp.min=today;inp.value=today;await sfLoadBank()}
+function sfLocalToday(){
+ const now=new Date();
+ return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+}
+function sfLockPastDate(input){
+ const today=sfLocalToday();
+ input.min=today;
+ if(!input.value||input.value<today)input.value=today;
+ input.addEventListener('change',()=>{
+   const current=sfLocalToday();
+   input.min=current;
+   if(input.value<current){
+     input.value=current;
+     showError('Datas anteriores ao dia atual não são permitidas.');
+   }
+ });
+}
+async function sfBank(){sfInit();const page=window.SF_PAGE;document.getElementById('bankTitle').textContent=page.title;document.getElementById('bankSub').textContent=page.sub;const inp=document.getElementById('bDate');sfLockPastDate(inp);await sfLoadBank()}
 async function sfLoadBank(){const d=await api('/api/bank');window._sfBalance=Number(d.balance||0);document.getElementById('bBalance').textContent=sfMoney(d.balance);document.getElementById('bIn').textContent=sfMoney(d.total_entradas);document.getElementById('bOut').textContent=sfMoney(d.total_saidas);document.getElementById('bList').innerHTML=(d.transactions||[]).map(t=>`<div class="sf-card"><div class="sf-tag">${t.type==='entrada'?'ENTRADA':'SAÍDA'}</div><h3>${sfEsc(t.reason)}</h3><div class="sf-meta">${sfDate(t.transaction_date)} • ${sfEsc(t.user_name||t.username||'Sistema')}</div><b style="color:${t.type==='entrada'?'#32d583':'#ef5350'}">${t.type==='entrada'?'+':'-'}${sfMoney(t.amount)}</b>${sfCanDelete()?`<div class="sf-actions"><button class="btn-danger w-auto" onclick="sfDeleteBankTransaction(${t.id})">EXCLUIR LANÇAMENTO</button></div>`:''}</div>`).join('')||'<div class="sf-empty">Nenhuma movimentação.</div>'}
 async function sfDeleteBankTransaction(id){
  if(!sfCanDelete())return showError('Somente o Super Admin pode excluir lançamentos bancários.');
@@ -25,7 +42,7 @@ async function sfDeleteBankTransaction(id){
  showSuccess('Lançamento excluído e registrado na auditoria.');
  await sfLoadBank();
 }
-async function sfSaveBank(){const type=bType.value,amount=Number(bAmount.value),reason=bReason.value.trim(),date=bDate.value;if(!type||!amount||!reason||!date)return showError('Preencha os campos.');if(type==='saida'&&amount>window._sfBalance)return showError('Saldo insuficiente.');const today=new Date().toISOString().slice(0,10);if(date<today)return showError('Data passada não é permitida.');await api('/api/bank',{method:'POST',body:{type,amount,reason,transaction_date:date}});showSuccess('Movimentação registrada.');bAmount.value='';bReason.value='';await sfLoadBank()}
+async function sfSaveBank(){const type=bType.value,amount=Number(bAmount.value),reason=bReason.value.trim(),date=bDate.value;if(!type||!amount||!reason||!date)return showError('Preencha os campos.');if(type==='saida'&&amount>window._sfBalance)return showError('Saldo insuficiente.');const today=sfLocalToday();if(date<today){bDate.value=today;return showError('Datas anteriores ao dia atual não são permitidas.');}await api('/api/bank',{method:'POST',body:{type,amount,reason,transaction_date:date}});showSuccess('Movimentação registrada.');bAmount.value='';bReason.value='';await sfLoadBank()}
 
 const RECORDS = {
  duty:{
@@ -92,7 +109,7 @@ function sfDutyApplyRelations(raw){let data={};try{data=raw?JSON.parse(raw):{}}c
 function sfDutyResetForm(){dutyEditId.value='';dutyStalkerForm.reset();sfDutyApplyRelations('{}');document.getElementById('dutyCancelBtn').style.display='none';document.querySelector('.duty-form-title').textContent='NOVO REGISTRO DE STALKER';}
 async function sfDutyOperators(){sfInit();if(!sfCanWrite()) document.querySelector('.duty-form-panel').style.display='none';sfDutyResetForm();await sfDutyLoadStalkers()}
 async function sfDutyLoadStalkers(){dutyStalkerRows=await api('/api/stalkers')||[];const total=dutyStalkerRows.length;document.getElementById('dutyStatTotal').textContent=total;document.getElementById('dutyStatVeteran').textContent=dutyStalkerRows.filter(s=>Number(s.reputacao||0)>=100).length;document.getElementById('dutyStatBlack').textContent=dutyStalkerRows.filter(s=>Number(s.status_lista_negra||0)===1).length;document.getElementById('dutyStatRecent').textContent=total?('#'+dutyStalkerRows.slice().sort((a,b)=>Number(b.id)-Number(a.id))[0].id):'-';sfDutyRenderStalkers()}
-function sfDutyRenderStalkers(){const q=(dutySearch.value||'').toLowerCase().trim();const order=dutyOrder.value;let rows=dutyStalkerRows.filter(s=>!q||[s.nome,s.codinome,s.faccao,s.area_atuacao].join(' ').toLowerCase().includes(q));rows=rows.slice().sort((a,b)=>{switch(order){case 'id_asc': return Number(a.id)-Number(b.id);case 'rep_desc': return Number(b.reputacao||0)-Number(a.reputacao||0);case 'rep_asc': return Number(a.reputacao||0)-Number(b.reputacao||0);case 'alpha_asc': return String(a.codinome||'').localeCompare(String(b.codinome||''),'pt-BR');case 'alpha_desc': return String(b.codinome||'').localeCompare(String(a.codinome||''),'pt-BR');default:return Number(b.id)-Number(a.id)}});dutyStalkerList.innerHTML=rows.map(s=>{let rel={};try{rel=s.relacoes_faccoes?JSON.parse(s.relacoes_faccoes):{}}catch(e){}const relBadges=Object.entries(rel).slice(0,6).map(([k,v])=>`<span class="duty-rel-badge">${sfEsc(k)}: ${sfEsc(v)}</span>`).join('');return `<article class="duty-agent-card"><div>${s.foto?`<img class="duty-agent-photo" src="${sfEsc(s.foto)}" alt="Foto de ${sfEsc(s.codinome||s.nome)}">`:`<div class="duty-agent-photo placeholder">SEM FOTO<br>DE AGENTE</div>`}${Number(s.status_lista_negra||0)===1?`<div class="sf-tag" style="margin-top:8px;color:#ff8c8c;border-color:#6d2c2c">RESTRIÇÃO INTERNA</div>`:''}</div><div><div class="duty-agent-header"><div><h3>${sfEsc(s.codinome||'SEM CODINOME')}</h3><div class="duty-agent-sub">${sfEsc(s.nome||'Sem nome')} • ${sfEsc(s.faccao||'Duty')}</div></div><span class="sf-tag">REP ${Number(s.reputacao||0)}</span></div><div class="duty-agent-meta"><p><b>Área:</b> ${sfEsc(s.area_atuacao||'-')}</p><p><b>ID:</b> #${s.id}</p><p><b>Aliados:</b> ${sfEsc(s.aliados||'-')}</p><p><b>Inimigos:</b> ${sfEsc(s.inimigos||'-')}</p></div>${relBadges?`<div class="duty-rel-badges">${relBadges}</div>`:''}${s.rumores?`<p class="duty-agent-notes"><b>Notas:</b> ${sfEsc(s.rumores)}</p>`:''}${sfCanWrite()?`<div class="duty-agent-actions"><button class="btn-secondary" onclick='sfDutyEditStalker(${JSON.stringify(s).replace(/'/g,"&#39;")})'>EDITAR</button>${sfCanDelete()?`<button class="btn-danger" onclick="sfDutyDeleteStalker(${s.id})">EXCLUIR</button>`:''}</div>`:''}</div></article>`}).join('')||'<div class="sf-empty">Nenhum agente registrado no efetivo.</div>'}
+function sfDutyRenderStalkers(){const q=(dutySearch.value||'').toLowerCase().trim();const order=dutyOrder.value;let rows=dutyStalkerRows.filter(s=>!q||[s.nome,s.codinome,s.faccao,s.area_atuacao].join(' ').toLowerCase().includes(q));rows=rows.slice().sort((a,b)=>{switch(order){case 'id_asc': return Number(a.id)-Number(b.id);case 'rep_desc': return Number(b.reputacao||0)-Number(a.reputacao||0);case 'rep_asc': return Number(a.reputacao||0)-Number(b.reputacao||0);case 'alpha_asc': return String(a.codinome||'').localeCompare(String(b.codinome||''),'pt-BR');case 'alpha_desc': return String(b.codinome||'').localeCompare(String(a.codinome||''),'pt-BR');default:return Number(b.id)-Number(a.id)}});dutyStalkerList.innerHTML=rows.map(s=>{let rel={};try{rel=s.relacoes_faccoes?JSON.parse(s.relacoes_faccoes):{}}catch(e){}const relBadges=Object.entries(rel).slice(0,6).map(([k,v])=>`<span class="duty-rel-badge">${sfEsc(k)}: ${sfEsc(v)}</span>`).join('');return `<article class="duty-agent-card"><div>${s.foto?`<img class="duty-agent-photo" src="${sfEsc(s.foto)}" alt="Foto de ${sfEsc(s.codinome||s.nome)}">`:`<div class="duty-agent-photo placeholder">SEM FOTO<br>DE AGENTE</div>`}${Number(s.status_lista_negra||0)===1?`<div class="sf-tag" style="margin-top:8px;color:#ff8c8c;border-color:#6d2c2c">RESTRIÇÃO INTERNA</div>`:''}</div><div><div class="duty-agent-header"><div><h3>${sfEsc(s.codinome||'SEM CODINOME')}</h3><div class="duty-agent-sub">${sfEsc(s.nome||'Sem nome')} • ${sfEsc(s.faccao||'Duty')}</div></div><div><span class="sf-tag">REP ${Number(s.reputacao||0)}</span><span class="sf-tag">${sfMoney(s.saldo_ru||0)}</span></div></div><div class="duty-agent-meta"><p><b>Área:</b> ${sfEsc(s.area_atuacao||'-')}</p><p><b>ID:</b> #${s.id}</p><p><b>Aliados:</b> ${sfEsc(s.aliados||'-')}</p><p><b>Inimigos:</b> ${sfEsc(s.inimigos||'-')}</p></div>${relBadges?`<div class="duty-rel-badges">${relBadges}</div>`:''}${s.rumores?`<p class="duty-agent-notes"><b>Notas:</b> ${sfEsc(s.rumores)}</p>`:''}${sfCanWrite()?`<div class="duty-agent-actions"><button class="btn-secondary" onclick='sfDutyEditStalker(${JSON.stringify(s).replace(/'/g,"&#39;")})'>EDITAR</button>${sfCanDelete()?`<button class="btn-danger" onclick="sfDutyDeleteStalker(${s.id})">EXCLUIR</button>`:''}</div>`:''}</div></article>`}).join('')||'<div class="sf-empty">Nenhum agente registrado no efetivo.</div>'}
 function sfDutyEditStalker(s){dutyEditId.value=s.id||'';dutyNome.value=s.nome||'';dutyCodinome.value=s.codinome||'';dutyFaccao.value=s.faccao||'';dutyArea.value=s.area_atuacao||'';dutyAliados.value=s.aliados||'';dutyInimigos.value=s.inimigos||'';dutyRumores.value=s.rumores||'';sfDutyApplyRelations(s.relacoes_faccoes||'{}');document.getElementById('dutyCancelBtn').style.display='inline-flex';document.querySelector('.duty-form-title').textContent='EDITAR REGISTRO DE STALKER';window.scrollTo({top:0,behavior:'smooth'})}
 async function sfDutySaveStalker(){const fd=new FormData();fd.append('nome', dutyNome.value.trim());fd.append('codinome', dutyCodinome.value.trim());fd.append('faccao', dutyFaccao.value.trim()||'Duty');fd.append('area_atuacao', dutyArea.value.trim());fd.append('aliados', dutyAliados.value.trim());fd.append('inimigos', dutyInimigos.value.trim());fd.append('relacoes_faccoes', sfDutySerializeRelations());fd.append('rumores', dutyRumores.value.trim());if(dutyFoto.files[0]) fd.append('foto', dutyFoto.files[0]);const editId=dutyEditId.value;await apiForm(editId?`/api/stalkers/${editId}`:'/api/stalkers', fd, editId?'PUT':'POST');showSuccess(editId?'Registro atualizado.':'Agente registrado no efetivo.');sfDutyResetForm();await sfDutyLoadStalkers()}
 async function sfDutyDeleteStalker(id){if(!sfCanDelete())return showError('Somente o Super Admin pode excluir registros.');if(!confirm('Excluir este agente do efetivo da Duty?')) return;await api(`/api/stalkers/${id}`,{method:'DELETE'});showSuccess('Registro excluído do efetivo.');await sfDutyLoadStalkers()}
@@ -316,7 +333,7 @@ function sfRosterRender(){
             <h3>${sfEsc(s.codinome||'SEM CODINOME')}</h3>
             <div class="roster-sub">${sfEsc(s.nome||'Sem nome')} • ${sfEsc(s.faccao||sfCfg().name)}</div>
           </div>
-          <span class="sf-tag">REP ${Number(s.reputacao||0)}</span>
+          <div><span class="sf-tag">REP ${Number(s.reputacao||0)}</span><span class="sf-tag">${sfMoney(s.saldo_ru||0)}</span></div>
         </div>
 
         <div class="roster-meta">
@@ -378,4 +395,71 @@ async function sfRosterDelete(id){
   await api(`/api/stalkers/${id}`,{method:'DELETE'});
   showSuccess('Registro excluído.');
   await sfRosterLoad();
+}
+
+
+let sfCommercePeople=[], sfCommerceTx=[];
+async function sfCommerceInit(){
+ sfInit();
+ if(!sfCanWrite())document.querySelector('.commerce-form').style.display='none';
+ await Promise.all([sfCommerceLoadPeople(),sfCommerceLoadHistory()]);
+ sfCommerceRewardModeChanged();sfCommerceOperationChanged();
+}
+async function sfCommerceLoadPeople(){
+ sfCommercePeople=await api(`/api/commerce/people?module=${encodeURIComponent(window.SF_PAGE.module)}`)||[];
+ commercePerson.innerHTML='<option value="">Selecione uma pessoa cadastrada...</option>'+sfCommercePeople.map(p=>`<option value="${p.id}">${sfEsc(p.codinome||p.nome)} — ${sfEsc(p.nome||'')}</option>`).join('');
+}
+function sfCommerceSelected(){return sfCommercePeople.find(p=>String(p.id)===String(commercePerson.value))}
+function sfCommercePersonChanged(){
+ const p=sfCommerceSelected();
+ if(!p){commercePersonInfo.classList.add('hidden');commercePersonInfo.innerHTML='';return}
+ commercePersonInfo.classList.remove('hidden');
+ commercePersonInfo.innerHTML=`${p.foto?`<img class="commerce-person-photo" src="${sfEsc(p.foto)}">`:`<div class="commerce-person-photo placeholder">SEM FOTO</div>`}<div><div class="commerce-person-name">${sfEsc(p.codinome||p.nome)}</div><div class="commerce-person-real">${sfEsc(p.nome||'')} • ${sfEsc(p.faccao||sfCfg().name)}</div><div class="commerce-person-values"><span><b>${Number(p.reputacao||0)}</b> REPUTAÇÃO</span><span><b>${sfMoney(p.saldo_ru||0)}</b> SALDO PESSOAL</span></div><div class="sf-meta">Área: ${sfEsc(p.area_atuacao||'-')}</div></div>`;
+ sfCommercePreview();
+}
+function sfCommerceOperationChanged(){
+ const op=commerceOperation.value;
+ commerceMoneyLabel.textContent=op==='FACCAO_VENDE'?'VALOR QUE A PESSOA PAGA (RU)':'VALOR QUE A PESSOA RECEBE (RU)';
+ sfCommercePreview();
+}
+function sfCommerceRewardModeChanged(){
+ const mode=commerceRewardMode.value;
+ commerceMoney.disabled=mode==='rep';
+ commerceRep.disabled=mode==='money';
+ if(mode==='rep')commerceMoney.value=0;
+ if(mode==='money')commerceRep.value=0;
+ sfCommercePreview();
+}
+function sfCommercePreview(){
+ const p=sfCommerceSelected();if(!p){commercePreview.innerHTML='';return}
+ const money=Number(commerceMoney.value||0),rep=Number(commerceRep.value||0),op=commerceOperation.value;
+ const delta=op==='FACCAO_VENDE'?-money:money;
+ const nextMoney=Number(p.saldo_ru||0)+delta;const nextRep=Number(p.reputacao||0)+rep;
+ commercePreview.innerHTML=`<b>PRÉVIA DO PERSONAGEM</b><span>Saldo: ${sfMoney(p.saldo_ru||0)} → <strong>${sfMoney(nextMoney)}</strong></span><span>Reputação: ${Number(p.reputacao||0)} → <strong>${nextRep}</strong></span>`;
+}
+['commerceMoney','commerceRep'].forEach(id=>document.addEventListener('input',e=>{if(e.target.id===id)sfCommercePreview()}));
+async function sfCommerceSave(){
+ const person=sfCommerceSelected();if(!person)return showError('Selecione uma pessoa cadastrada.');
+ const merch=commerceMerch.value.trim();if(merch.length<2)return showError('Informe a mercadoria.');
+ let money=Number(commerceMoney.value||0),rep=Number(commerceRep.value||0);const mode=commerceRewardMode.value;
+ if(mode==='rep')money=0;if(mode==='money')rep=0;
+ if(money<=0&&rep<=0)return showError('Informe RU, reputação ou ambos.');
+ if(commerceOperation.value==='FACCAO_VENDE'&&money>Number(person.saldo_ru||0))return showError(`Saldo pessoal insuficiente: ${sfMoney(person.saldo_ru||0)}.`);
+ try{
+  const result=await api('/api/commerce/transactions',{method:'POST',body:{module:window.SF_PAGE.module,personId:person.id,operationType:commerceOperation.value,merchandise:merch,quantity:Number(commerceQty.value||1),money,reputation:rep,notes:commerceNotes.value.trim()}});
+  showSuccess('Transação registrada. Saldo e reputação atualizados.');
+  commerceMerch.value='';commerceQty.value=1;commerceMoney.value=0;commerceRep.value=0;commerceNotes.value='';
+  await Promise.all([sfCommerceLoadPeople(),sfCommerceLoadHistory()]);
+  commercePerson.value=String(result.person.id);sfCommercePersonChanged();
+ }catch(e){console.error(e)}
+}
+function sfCommerceOperationLabel(v){return v==='FACCAO_COMPRA'?'FACÇÃO COMPROU':v==='FACCAO_VENDE'?'FACÇÃO VENDEU':'RECOMPENSA'}
+async function sfCommerceLoadHistory(){
+ sfCommerceTx=await api(`/api/commerce/transactions?module=${encodeURIComponent(window.SF_PAGE.module)}`)||[];
+ commerceHistory.innerHTML=sfCommerceTx.map(t=>`<article class="sf-card commerce-history-card"><span class="sf-tag">${sfCommerceOperationLabel(t.operation_type)}</span><h3>${sfEsc(t.merchandise)}</h3><p><b>Pessoa:</b> ${sfEsc(t.codinome||t.nome||('ID '+t.person_id))}</p><p><b>Quantidade:</b> ${Number(t.quantity||1)}</p><div class="commerce-deltas"><span class="${Number(t.money_delta)>=0?'positive':'negative'}">${Number(t.money_delta)>=0?'+':''}${sfMoney(t.money_delta||0)}</span><span class="positive">+${Number(t.reputation_delta||0)} REP</span></div><div class="sf-meta">Após: ${sfMoney(t.person_balance_after||0)} • REP ${Number(t.person_reputation_after||0)}<br>${sfDate(t.created_at)} • ${sfEsc(t.created_by_name||'Sistema')}</div>${t.notes?`<p>${sfEsc(t.notes)}</p>`:''}${sfCanDelete()?`<div class="sf-actions"><button class="btn-danger w-auto" onclick="sfCommerceDelete(${t.id})">ESTORNAR / EXCLUIR</button></div>`:''}</article>`).join('')||'<div class="sf-empty">Nenhuma transação registrada.</div>';
+}
+async function sfCommerceDelete(id){
+ if(!sfCanDelete())return showError('Somente o Super Admin pode excluir transações.');
+ if(!confirm('Estornar esta operação? O RU e a reputação serão revertidos e o lançamento correspondente do Caixa será removido.'))return;
+ await api(`/api/commerce/transactions/${id}`,{method:'DELETE'});showSuccess('Transação estornada.');await Promise.all([sfCommerceLoadPeople(),sfCommerceLoadHistory()]);sfCommercePersonChanged();
 }

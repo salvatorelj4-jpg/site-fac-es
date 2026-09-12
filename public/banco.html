@@ -150,6 +150,15 @@
         transactionDateInput.min = today;
         transactionDateInput.value = today;
 
+        transactionDateInput.addEventListener('change', () => {
+            const currentToday = getLocalToday();
+            transactionDateInput.min = currentToday;
+            if (transactionDateInput.value < currentToday) {
+                transactionDateInput.value = currentToday;
+                showError('Datas anteriores ao dia atual não são permitidas.');
+            }
+        });
+
         function getCurrentDisplayedBalance() {
             const raw = (document.getElementById('bank-balance').innerText || '0').replace(/[^0-9,.-]/g, '').replace(',', '.');
             const value = parseFloat(raw);

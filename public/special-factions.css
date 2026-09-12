@@ -66,3 +66,9 @@
   .roster-card{grid-template-columns:1fr}
   .roster-photo{width:100%;height:210px}
 }
+
+
+/* V19 — comércio por pessoa */
+.commerce-wrap{max-width:1180px}.commerce-form{margin:15px 0}.commerce-person-card{display:grid;grid-template-columns:95px 1fr;gap:14px;padding:14px;border:1px solid var(--line);background:rgba(0,0,0,.28)}
+.commerce-person-photo{width:95px;height:120px;object-fit:cover;border:1px solid var(--line);background:#05080b}.commerce-person-photo.placeholder{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;text-align:center}.commerce-person-name{color:var(--accent);font-size:21px;font-weight:bold;letter-spacing:1px}.commerce-person-real{color:#c5ced6;margin:4px 0 12px}.commerce-person-values{display:flex;gap:10px;flex-wrap:wrap}.commerce-person-values span{border:1px solid var(--line);padding:9px 12px;color:var(--muted)}.commerce-person-values b{display:block;color:var(--accent);font-size:17px}.commerce-preview{display:flex;gap:18px;flex-wrap:wrap;margin:12px 0;padding:12px;border:1px dashed var(--line);color:var(--muted)}.commerce-preview b{color:var(--accent)}.commerce-preview span{display:block}.commerce-deltas{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.commerce-deltas span{padding:5px 9px;border:1px solid var(--line);font-weight:bold}.commerce-deltas .positive{color:#32d583}.commerce-deltas .negative{color:#ef5350}
+@media(max-width:600px){.commerce-person-card{grid-template-columns:1fr}.commerce-person-photo{width:100%;height:190px}}
