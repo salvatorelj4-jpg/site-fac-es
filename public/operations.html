@@ -10,7 +10,7 @@
 <div id="opForm" class="card hidden"><h3 class="text-accent">REGISTRO OPERACIONAL</h3>
 <input id="oTitle" placeholder="Codinome / nome da operação"><div class="d-flex gap-1 flex-wrap"><input id="oContract" placeholder="Código do contrato (opcional)" style="flex:1"><input id="oLocation" placeholder="Local" style="flex:1"></div>
 <textarea id="oObjective" rows="2" placeholder="Objetivo principal"></textarea><div class="d-flex gap-1 flex-wrap"><select id="oRisk" style="flex:1"><option value="baixo">RISCO BAIXO</option><option value="medio">RISCO MÉDIO</option><option value="alto">RISCO ALTO</option><option value="extremo">RISCO EXTREMO</option></select>
-<select id="oStatus" style="flex:1"><option value="planejamento">PLANEJAMENTO</option><option value="ativa">ATIVA</option><option value="suspensa">SUSPENSA</option><option value="concluida">CONCLUÍDA</option></select></div>
+<div style="flex:1;border:1px solid #17314d;padding:12px;color:#93c5fd;background:#02070d;">STATUS INICIAL: PLANEJAMENTO</div></div>
 <input id="oReward" placeholder="Recompensa"><input id="oTeam" placeholder="Equipe / agentes envolvidos"><textarea id="oDesc" rows="4" placeholder="Descrição operacional"></textarea>
 <div class="d-flex gap-1"><button class="btn-success" onclick="saveOp()">SALVAR</button><button class="btn-secondary" onclick="closeOp()">CANCELAR</button></div></div>
 <div id="opsList" class="ops"></div></div>
@@ -18,14 +18,41 @@
 let editing=null;let opCache=[];
 function isMercLeader(){const u=getUser();return u&&(u.role==='super_admin'||u.role==='faction_admin')}
 function canCreateOp(){const u=getUser();return u&&(u.role==='super_admin'||['operator','commander','faction_admin'].includes(u.role))}
-function openOp(r=null){if(!canCreateOp())return showError('Seu cargo não pode criar operações.');editing=r?.id||null;oTitle.value=r?.title||'';oContract.value=r?.extra?.contractCode||'';oLocation.value=r?.location||'';oObjective.value=r?.subject||'';oRisk.value=r?.extra?.risk||'medio';oStatus.value=r?.status||'planejamento';oReward.value=r?.extra?.reward||'';oTeam.value=r?.extra?.team||'';oDesc.value=r?.description||'';opForm.classList.remove('hidden')}
+function openOp(r=null){if(!canCreateOp())return showError('Seu cargo não pode criar operações.');editing=r?.id||null;oTitle.value=r?.title||'';oContract.value=r?.extra?.contractCode||'';oLocation.value=r?.location||'';oObjective.value=r?.subject||'';oRisk.value=r?.extra?.risk||'medio';oReward.value=r?.extra?.reward||'';oTeam.value=r?.extra?.team||'';oDesc.value=r?.description||'';opForm.classList.remove('hidden')}
 function closeOp(){editing=null;opForm.classList.add('hidden')}
 async function initOps(){const u=checkAuth();if(!u)return;if(u.role!=='super_admin'&&u.factionSlug!=='mercenaries'){location.href='/unauthorized.html';return}loadOps()}
-async function saveOp(){const body={title:oTitle.value.trim(),contractCode:oContract.value.trim(),objective:oObjective.value.trim(),location:oLocation.value.trim(),risk:oRisk.value,reward:oReward.value.trim(),team:oTeam.value.trim(),description:oDesc.value.trim(),status:oStatus.value};if(body.title.length<2)return showError('Informe o nome da operação.');
-await api(editing?`/api/mercenary/operations/${editing}`:'/api/mercenary/operations',{method:editing?'PUT':'POST',body});showSuccess(editing?'Operação atualizada.':'Operação criada.');closeOp();loadOps()}
+async function saveOp(){
+ const current = editing ? opCache.find(x=>x.id===editing) : null;
+ const body={
+   title:oTitle.value.trim(),
+   contractCode:oContract.value.trim(),
+   objective:oObjective.value.trim(),
+   location:oLocation.value.trim(),
+   risk:oRisk.value,
+   reward:oReward.value.trim(),
+   team:oTeam.value.trim(),
+   description:oDesc.value.trim(),
+   status: current?.status || 'planejamento'
+ };
+ if(body.title.length<2)return showError('Informe o nome da operação.');
+ await api(editing?`/api/mercenary/operations/${editing}`:'/api/mercenary/operations',{method:editing?'PUT':'POST',body});
+ showSuccess(editing?'Operação atualizada.':'Operação criada em PLANEJAMENTO.');
+ closeOp();
+ loadOps();
+}
+async function setOpStatus(id,status){
+ await api(`/api/mercenary/operations/${id}/status`,{method:'POST',body:{status}});
+ showSuccess(`Operação marcada como ${status.toUpperCase()}.`);
+ loadOps();
+}
 async function completeOp(id){await api(`/api/mercenary/operations/${id}/complete`,{method:'POST'});showSuccess('Operação concluída.');loadOps()}
 async function deleteOp(id){if(!confirm('Excluir esta operação permanentemente?'))return;await api(`/api/mercenary/operations/${id}`,{method:'DELETE'});showSuccess('Operação excluída.');loadOps()}
 async function loadOps(){opCache=await api('/api/mercenary/operations')||[];sPlan.textContent=opCache.filter(x=>x.status==='planejamento').length;sActive.textContent=opCache.filter(x=>x.status==='ativa').length;sSusp.textContent=opCache.filter(x=>x.status==='suspensa').length;sDone.textContent=opCache.filter(x=>x.status==='concluida').length;
-const uid=getUser().id;opsList.innerHTML=opCache.map(r=>{const mine=r.created_by===uid||getUser().role==='super_admin';return `<div class="op"><div class="ophead"><div><span class="tag">${escapeHtml(String(r.status).toUpperCase())}</span><h3 class="text-accent">${escapeHtml(r.title)}</h3></div><div class="d-flex gap-1">${mine?`<button class="btn-secondary w-auto" onclick='openOp(${JSON.stringify(r).replace(/'/g,"&#39;")})'>EDITAR</button>${r.status!=='concluida'?`<button class="btn-success w-auto" onclick="completeOp(${r.id})">CONCLUIR</button>`:''}`:''}${isMercLeader()?`<button class="btn-danger w-auto" onclick="deleteOp(${r.id})">EXCLUIR</button>`:''}</div></div>
+const uid=getUser().id;opsList.innerHTML=opCache.map(r=>{const mine=r.created_by===uid||getUser().role==='super_admin';return `<div class="op"><div class="ophead"><div><span class="tag">${escapeHtml(String(r.status).toUpperCase())}</span><h3 class="text-accent">${escapeHtml(r.title)}</h3></div><div class="d-flex gap-1">${mine?`
+<button class="btn-secondary w-auto" onclick='openOp(${JSON.stringify(r).replace(/'/g,"&#39;")})'>EDITAR</button>
+${r.status!=='ativa'&&r.status!=='concluida'?`<button class="btn-success w-auto" onclick="setOpStatus(${r.id},'ativa')">ATIVAR</button>`:''}
+${r.status!=='suspensa'&&r.status!=='concluida'?`<button class="btn-warning w-auto" onclick="setOpStatus(${r.id},'suspensa')">SUSPENDER</button>`:''}
+${r.status!=='concluida'?`<button class="btn-success w-auto" onclick="completeOp(${r.id})">CONCLUIR</button>`:''}
+`:''}${isMercLeader()?`<button class="btn-danger w-auto" onclick="deleteOp(${r.id})">EXCLUIR</button>`:''}</div></div>
 <p><b>Contrato:</b> ${escapeHtml(r.extra?.contractCode||'-')} | <b>Risco:</b> ${escapeHtml(r.extra?.risk||'-')} | <b>Local:</b> ${escapeHtml(r.location||'-')}</p><p><b>Objetivo:</b> ${escapeHtml(r.subject||'-')}</p><p><b>Equipe:</b> ${escapeHtml(r.extra?.team||'-')} | <b>Recompensa:</b> ${escapeHtml(r.extra?.reward||'-')}</p>${r.description?`<p>${escapeHtml(r.description)}</p>`:''}<small class="text-muted">Registrado por ${escapeHtml(r.created_by_name||r.created_by_username||'desconhecido')} • ${formatDateTime(r.created_at)}</small></div>`}).join('')||'<div class="card">Nenhuma operação registrada.</div>'}
 </script></body></html>

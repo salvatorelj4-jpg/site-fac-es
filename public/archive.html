@@ -1,45 +1,140 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="style.css">
-  <title>archive</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css">
+<title>Arquivo Confidencial</title>
+<style>
+.wrap{max-width:1200px;margin:28px auto}
+.hero{background:linear-gradient(120deg,#02070d,#071321);border:1px solid #17314d;border-top:3px solid #3b82f6;padding:24px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+.stat{background:#03070b;border:1px solid #17314d;padding:16px;text-align:center}.stat b{display:block;color:#60a5fa;font-size:2em}
+.toolbar{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin:16px 0}
+.files{display:grid;gap:14px}
+.file-card{background:linear-gradient(145deg,#04090f,#020508);border:1px solid #17314d;padding:20px;position:relative;overflow:hidden}
+.file-card:before{content:'CLASSIFIED ARCHIVE';position:absolute;right:12px;top:10px;color:#132d46;font-size:.72em;letter-spacing:2px}
+.file-code{color:#60a5fa;letter-spacing:3px;font-size:.9em}.stamp{display:inline-block;padding:4px 9px;border:1px solid #294b70;margin-right:6px;font-size:.82em}
+.stamp.sig{border-color:#7f1d1d;color:#f87171}.stamp.conf{border-color:#854d0e;color:#fbbf24}
+.file-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.secret-box{border-left:3px solid #7f1d1d;background:rgba(127,29,29,.08);padding:10px;margin-top:10px}
+@media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}.toolbar{grid-template-columns:1fr}}
+</style>
 </head>
-<body onload="initFactionModule()">
-  <nav id="mainNav"></nav>
-  <div class="container">
-    <div class="card" style="border-top:3px solid var(--accent);">
-      <h2 id="moduleTitle" class="text-accent" style="margin-top:0;">MÓDULO</h2>
-      <p id="moduleSubtitle" class="text-muted">Registros RP da facção</p>
-      <button id="newBtn" class="btn-success w-auto" onclick="openRecordForm()">+ NOVO REGISTRO</button>
-    </div>
+<body onload="initArchive()">
+<nav id="mainNav"></nav>
+<div class="container wrap">
+<div class="hero">
+<div class="file-code">MERCENARY SYNDICATE / INTERNAL STORAGE</div>
+<h2 style="color:#60a5fa;margin:8px 0">▣ ARQUIVO CONFIDENCIAL</h2>
+<p class="text-muted">Centro de dossiês, evidências e registros internos do Sindicato Mercenário.</p>
+<button id="newArchiveBtn" class="btn-success w-auto" onclick="openArchiveForm()">+ NOVO DOSSIÊ</button>
+</div>
 
-    <div id="recordForm" class="card hidden" style="border:1px solid var(--accent);">
-      <h3 id="formTitle" class="text-accent">NOVO REGISTRO</h3>
-      <input id="recordTitle" type="text" placeholder="Título">
-      <div class="d-flex gap-1 flex-wrap">
-        <div style="flex:1; min-width:220px;"><label id="labelCategory">Categoria</label><input id="recordCategory" type="text"></div>
-        <div style="flex:1; min-width:220px;"><label>Status</label><select id="recordStatus"></select></div>
-      </div>
-      <div class="d-flex gap-1 flex-wrap">
-        <div style="flex:1; min-width:220px;"><label id="labelSubject">Assunto</label><input id="recordSubject" type="text"></div>
-        <div style="flex:1; min-width:220px;"><label id="labelLocation">Local</label><input id="recordLocation" type="text"></div>
-      </div>
-      <label>Descrição / contexto RP</label>
-      <textarea id="recordDescription" rows="5"></textarea>
-      <label>Detalhes adicionais</label>
-      <textarea id="recordExtra" rows="3"></textarea>
-      <div class="d-flex gap-1">
-        <button class="btn-success" onclick="saveFactionRecord()">SALVAR</button>
-        <button class="btn-secondary" onclick="closeRecordForm()">CANCELAR</button>
-      </div>
-    </div>
+<div class="stats">
+<div class="stat"><b id="aTotal">0</b>TOTAL</div>
+<div class="stat"><b id="aActive">0</b>ATIVOS</div>
+<div class="stat"><b id="aArchived">0</b>ARQUIVADOS</div>
+<div class="stat"><b id="aSecret">0</b>SIGILOSOS</div>
+</div>
 
-    <div id="recordList"></div>
-  </div>
-  <script>window.FACTION_MODULE = "archive";</script>
-  <script src="app.js"></script>
-  <script src="faction-module.js"></script>
+<div class="toolbar">
+<input id="aSearch" placeholder="Buscar por código, nome ou referência..." oninput="renderArchive()">
+<select id="aClassFilter" onchange="renderArchive()"><option value="">TODAS CLASSIFICAÇÕES</option><option>PUBLICO</option><option>RESTRITO</option><option>CONFIDENCIAL</option><option>SIGILOSO</option></select>
+<select id="aStatusFilter" onchange="renderArchive()"><option value="">TODOS STATUS</option><option>ATIVO</option><option>ARQUIVADO</option></select>
+</div>
+
+<div id="archiveForm" class="card hidden">
+<h3 id="archiveFormTitle" class="text-accent">NOVO DOSSIÊ</h3>
+<input id="aTitle" placeholder="Nome do dossiê">
+<div class="d-flex gap-1 flex-wrap">
+<select id="aClassification" style="flex:1"><option>PUBLICO</option><option>RESTRITO</option><option>CONFIDENCIAL</option><option>SIGILOSO</option></select>
+<input id="aOrigin" placeholder="Origem / região" style="flex:1">
+</div>
+<input id="aRelated" placeholder="Relacionado a (contrato, operação, cliente, alvo...)">
+<textarea id="aSummary" rows="3" placeholder="Resumo do caso"></textarea>
+<textarea id="aContent" rows="6" placeholder="Conteúdo do arquivo"></textarea>
+<textarea id="aSecretNotes" rows="3" placeholder="Observações sigilosas"></textarea>
+<div class="d-flex gap-1"><button class="btn-success" onclick="saveArchive()">SALVAR DOSSIÊ</button><button class="btn-secondary" onclick="closeArchiveForm()">CANCELAR</button></div>
+</div>
+
+<div id="archiveList" class="files"></div>
+</div>
+
+<script src="app.js"></script>
+<script>
+let archiveRows=[];let editingArchive=null;
+function me(){return getUser()}
+function isArchiveLeader(){const u=me();return u&&(u.role==='super_admin'||u.role==='faction_admin')}
+function canCreateArchive(){const u=me();return u&&(u.role==='super_admin'||['operator','commander','faction_admin'].includes(u.role))}
+function canEditArchive(r){return me().role==='super_admin'||r.created_by===me().id}
+
+async function initArchive(){
+ const u=checkAuth();if(!u)return;
+ if(u.role!=='super_admin'&&u.factionSlug!=='mercenaries'){location.href='/unauthorized.html';return}
+ if(!canCreateArchive())newArchiveBtn.style.display='none';
+ await loadArchive();
+}
+function openArchiveForm(r=null){
+ if(!canCreateArchive())return showError('Seu cargo não pode criar dossiês.');
+ editingArchive=r?.id||null;
+ archiveFormTitle.textContent=editingArchive?`EDITAR ${r.archive_code}`:'NOVO DOSSIÊ';
+ aTitle.value=r?.title||'';
+ aClassification.value=r?.category||'RESTRITO';
+ aOrigin.value=r?.location||'';
+ aRelated.value=r?.extra?.relatedTo||r?.subject||'';
+ aSummary.value=r?.extra?.summary||'';
+ aContent.value=r?.description||'';
+ aSecretNotes.value=r?.extra?.secretNotes||'';
+ archiveForm.classList.remove('hidden');
+}
+function closeArchiveForm(){editingArchive=null;archiveForm.classList.add('hidden')}
+async function saveArchive(){
+ const body={title:aTitle.value.trim(),classification:aClassification.value,origin:aOrigin.value.trim(),relatedTo:aRelated.value.trim(),summary:aSummary.value.trim(),content:aContent.value.trim(),secretNotes:aSecretNotes.value.trim()};
+ if(body.title.length<2)return showError('Informe o nome do dossiê.');
+ await api(editingArchive?`/api/mercenary/archive/${editingArchive}`:'/api/mercenary/archive',{method:editingArchive?'PUT':'POST',body});
+ showSuccess(editingArchive?'Dossiê atualizado.':'Dossiê criado.');
+ closeArchiveForm();loadArchive();
+}
+async function archiveFile(id){
+ if(!confirm('Arquivar este dossiê?'))return;
+ await api(`/api/mercenary/archive/${id}/archive`,{method:'POST'});
+ showSuccess('Dossiê arquivado.');loadArchive();
+}
+async function deleteArchive(id){
+ if(!confirm('Excluir este dossiê permanentemente?'))return;
+ await api(`/api/mercenary/archive/${id}`,{method:'DELETE'});
+ showSuccess('Dossiê excluído.');loadArchive();
+}
+async function loadArchive(){
+ archiveRows=await api('/api/mercenary/archive')||[];
+ aTotal.textContent=archiveRows.length;
+ aActive.textContent=archiveRows.filter(x=>x.status==='ATIVO').length;
+ aArchived.textContent=archiveRows.filter(x=>x.status==='ARQUIVADO').length;
+ aSecret.textContent=archiveRows.filter(x=>x.category==='SIGILOSO').length;
+ renderArchive();
+}
+function renderArchive(){
+ const q=(aSearch.value||'').toLowerCase().trim(),cf=aClassFilter.value,sf=aStatusFilter.value;
+ const rows=archiveRows.filter(r=>{
+  const hay=[r.archive_code,r.title,r.location,r.subject,r.extra?.relatedTo].join(' ').toLowerCase();
+  return(!q||hay.includes(q))&&(!cf||r.category===cf)&&(!sf||r.status===sf);
+ });
+ archiveList.innerHTML=rows.map(r=>`<div class="file-card">
+ <div class="file-code">${escapeHtml(r.archive_code)}</div>
+ <h3 class="text-accent">${escapeHtml(r.title)}</h3>
+ <div><span class="stamp ${r.category==='SIGILOSO'?'sig':r.category==='CONFIDENCIAL'?'conf':''}">${escapeHtml(r.category)}</span><span class="stamp">${escapeHtml(r.status)}</span></div>
+ <p><b>Origem:</b> ${escapeHtml(r.location||'-')}</p>
+ <p><b>Relacionado a:</b> ${escapeHtml(r.extra?.relatedTo||r.subject||'-')}</p>
+ ${r.extra?.summary?`<p><b>Resumo:</b> ${escapeHtml(r.extra.summary)}</p>`:''}
+ ${r.description?`<p>${escapeHtml(r.description)}</p>`:''}
+ ${r.extra?.secretNotes?`<div class="secret-box"><b>NOTAS SIGILOSAS</b><br>${escapeHtml(r.extra.secretNotes)}</div>`:''}
+ <small class="text-muted">Responsável: ${escapeHtml(r.created_by_name||r.created_by_username||'desconhecido')} • ${formatDateTime(r.updated_at)}</small>
+ <div class="file-actions">
+ ${canEditArchive(r)?`<button class="btn-secondary w-auto" onclick='openArchiveForm(${JSON.stringify(r).replace(/'/g,"&#39;")})'>EDITAR</button>${r.status!=='ARQUIVADO'?`<button class="btn-warning w-auto" onclick="archiveFile(${r.id})">ARQUIVAR</button>`:''}`:''}
+ ${isArchiveLeader()?`<button class="btn-danger w-auto" onclick="deleteArchive(${r.id})">EXCLUIR</button>`:''}
+ </div></div>`).join('')||'<div class="card">Nenhum dossiê encontrado.</div>';
+}
+</script>
 </body>
 </html>

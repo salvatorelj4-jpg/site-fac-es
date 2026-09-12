@@ -320,7 +320,7 @@ function buildNav(currentPage) {
         { name: 'Clientes', url: '/clients.html' },
         { name: 'Operações', url: '/operations.html' },
         { name: 'Inteligência', url: '/intel.html' },
-        { name: 'Arquivo', url: '/archive.html' }
+        { name: 'Arquivo Confidencial', url: '/archive.html' }
       ];
     } else {
         links = [

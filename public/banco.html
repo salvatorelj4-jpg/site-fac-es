@@ -136,7 +136,19 @@
 
     <script src="app.js"></script>
     <script>
-        document.getElementById('t-date').valueAsDate = new Date();
+        const transactionDateInput = document.getElementById('t-date');
+
+        function getLocalToday() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        const today = getLocalToday();
+        transactionDateInput.min = today;
+        transactionDateInput.value = today;
 
         async function loadBankData() {
             try {
@@ -185,6 +197,10 @@
             const reason = document.getElementById('t-reason').value;
             const date = document.getElementById('t-date').value;
             
+            if (date < getLocalToday()) {
+                return showError('Não é permitido registrar transações com data anterior à data atual.');
+            }
+
             try {
                 await api('/api/bank', {
                     method: 'POST',
@@ -200,7 +216,8 @@
                 document.getElementById('t-type').value = '';
                 document.getElementById('t-amount').value = '';
                 document.getElementById('t-reason').value = '';
-                document.getElementById('t-date').valueAsDate = new Date();
+                document.getElementById('t-date').min = getLocalToday();
+                document.getElementById('t-date').value = getLocalToday();
                 
                 loadBankData();
             } catch (error) {

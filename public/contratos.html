@@ -26,15 +26,34 @@ async function loadContractsMerc(){
    ${c.description?`<p>${escapeHtml(c.description)}</p>`:''}
    ${c.additional_info?`<p class="meta">${escapeHtml(c.additional_info)}</p>`:''}
    <div class="meta">${formatDateTime(c.created_at)}</div>
-   ${isLeader()?`<select onchange="changeContract(${c.id},this.value)" style="margin-top:12px">
-    <option value="NEW" ${c.status==='NEW'?'selected':''}>NOVO</option>
-    <option value="ACCEPTED" ${c.status==='ACCEPTED'?'selected':''}>ACEITO</option>
-    <option value="SUSPENDED" ${c.status==='SUSPENDED'?'selected':''}>SUSPENSO</option>
-    <option value="COMPLETED" ${c.status==='COMPLETED'?'selected':''}>CONCLUÍDO</option>
-    <option value="REJECTED" ${c.status==='REJECTED'?'selected':''}>RECUSADO</option>
-   </select>`:''}
+   ${isLeader() ? (
+     ['SUSPENDED','COMPLETED','REJECTED'].includes(c.status)
+       ? `<div style="margin-top:12px;padding:10px;border:1px solid #294b70;color:#93c5fd;background:rgba(23,49,77,.18);">
+            STATUS FINAL — ${escapeHtml(contractStatus(c.status))} — BLOQUEADO
+          </div>`
+       : `<select onchange="changeContract(${c.id},this.value)" style="margin-top:12px">
+            <option value="" selected disabled>ALTERAR STATUS...</option>
+            ${c.status === 'NEW' ? '<option value="ACCEPTED">ACEITO</option>' : ''}
+            <option value="SUSPENDED">SUSPENSO</option>
+            <option value="COMPLETED">CONCLUÍDO</option>
+            <option value="REJECTED">RECUSADO</option>
+          </select>`
+   ) : ''}
   </div>`).join('')||'<div class="card">Nenhum formulário de contrato recebido.</div>';
  }catch(e){list.innerHTML=`<div class="card text-danger">${escapeHtml(e.message)}</div>`}
 }
-async function changeContract(id,status){try{await api(`/api/contracts/${id}/status`,{method:'PUT',body:{status}});showSuccess('Contrato atualizado.');loadContractsMerc()}catch(e){console.error(e)}}
+async function changeContract(id,status){
+  if (!status) return;
+  try {
+    await api(`/api/contracts/${id}/status`, {
+      method: 'PUT',
+      body: { status }
+    });
+    showSuccess('Status do contrato atualizado.');
+    await loadContractsMerc();
+  } catch (e) {
+    console.error(e);
+    await loadContractsMerc();
+  }
+}
 </script></body></html>

@@ -1,25 +1,129 @@
-<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="style.css"><title>Clientes Mercenários</title>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css">
+<title>Clientes Mercenários</title>
 <style>
 .merc-wrap{max-width:1150px;margin:30px auto}.hero{background:linear-gradient(120deg,#03080d,#071829);border:1px solid #17314d;border-top:3px solid #3b82f6;padding:22px}
-.dossiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:15px}.dossier{background:#03070b;border:1px solid #17314d;padding:18px;position:relative}.dossier:before{content:'CLIENT FILE';position:absolute;right:10px;top:8px;color:#18334e;font-size:.75em;letter-spacing:2px}
-</style></head><body onload="initClients()"><nav id="mainNav"></nav><div class="container merc-wrap">
-<div class="hero"><h2 style="color:#60a5fa;margin:0">☠ DOSSIÊS DE CLIENTES</h2><p class="text-muted">Base privada do Sindicato Mercenário.</p><button class="btn-success w-auto" onclick="openClient()">+ CADASTRAR CLIENTE</button></div>
-<div id="clientForm" class="card hidden" style="margin-top:16px"><h3 class="text-accent">NOVO DOSSIÊ</h3>
-<input id="cName" placeholder="Nome / Codinome do cliente"><div class="d-flex gap-1 flex-wrap">
-<input id="cType" placeholder="Tipo de cliente (stalker, facção, comerciante...)" style="flex:1"><input id="cContact" placeholder="Contato seguro" style="flex:1"></div>
-<div class="d-flex gap-1 flex-wrap"><select id="cStatus" style="flex:1"><option>ATIVO</option><option>VIP</option><option>RESTRITO</option><option>LISTA NEGRA</option></select>
-<input id="cRegion" placeholder="Região / zona de atuação" style="flex:1"></div>
-<input id="cTrust" placeholder="Nível de confiança / reputação"><textarea id="cNotes" rows="4" placeholder="Histórico, preferências, observações e contratos anteriores"></textarea>
-<div class="d-flex gap-1"><button class="btn-success" onclick="saveClient()">SALVAR DOSSIÊ</button><button class="btn-secondary" onclick="clientForm.classList.add('hidden')">CANCELAR</button></div></div>
-<div id="clientList" class="dossiers" style="margin-top:16px"></div></div>
-<script src="app.js"></script><script>
+.dossiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:15px}
+.dossier{background:#03070b;border:1px solid #17314d;padding:18px;position:relative;display:grid;grid-template-columns:110px 1fr;gap:16px}
+.client-photo{width:110px;height:135px;object-fit:cover;border:1px solid #294b70;background:#07111d}
+.photo-placeholder{width:110px;height:135px;border:1px solid #294b70;background:linear-gradient(145deg,#07111d,#020508);display:flex;align-items:center;justify-content:center;font-size:42px;color:#1e3a5f}
+.dossier:before{content:'CLIENT FILE';position:absolute;right:10px;top:8px;color:#18334e;font-size:.75em;letter-spacing:2px}
+@media(max-width:600px){.dossier{grid-template-columns:1fr}.client-photo,.photo-placeholder{width:100%;height:220px}}
+</style>
+</head>
+<body onload="initClients()">
+<nav id="mainNav"></nav>
+<div class="container merc-wrap">
+<div class="hero">
+<h2 style="color:#60a5fa;margin:0">☠ DOSSIÊS DE CLIENTES</h2>
+<p class="text-muted">Base privada do Sindicato Mercenário.</p>
+<button class="btn-success w-auto" onclick="openClient()">+ CADASTRAR CLIENTE</button>
+</div>
+
+<div id="clientForm" class="card hidden" style="margin-top:16px">
+<h3 class="text-accent">NOVO DOSSIÊ</h3>
+<input id="cName" placeholder="Nome / Codinome do cliente">
+<div class="d-flex gap-1 flex-wrap">
+<input id="cType" placeholder="Tipo de cliente (stalker, facção, comerciante...)" style="flex:1">
+<input id="cContact" placeholder="Contato seguro" style="flex:1">
+</div>
+<div class="d-flex gap-1 flex-wrap">
+<select id="cStatus" style="flex:1"><option>ATIVO</option><option>VIP</option><option>RESTRITO</option><option>LISTA NEGRA</option></select>
+<input id="cRegion" placeholder="Região / zona de atuação" style="flex:1">
+</div>
+<input id="cTrust" placeholder="Nível de confiança / reputação">
+<label>Foto do cliente (JPG, PNG ou WEBP)</label>
+<input id="cPhoto" type="file" accept="image/jpeg,image/png,image/webp">
+<textarea id="cNotes" rows="4" placeholder="Histórico, preferências, observações e contratos anteriores"></textarea>
+<div class="d-flex gap-1">
+<button class="btn-success" onclick="saveClient()">SALVAR DOSSIÊ</button>
+<button class="btn-secondary" onclick="closeClient()">CANCELAR</button>
+</div>
+</div>
+
+<div id="clientList" class="dossiers" style="margin-top:16px"></div>
+</div>
+
+<script src="app.js"></script>
+<script>
 function openClient(){clientForm.classList.remove('hidden')}
-async function initClients(){const u=checkAuth();if(!u)return;if(u.role!=='super_admin'&&u.factionSlug!=='mercenaries'){location.href='/unauthorized.html';return}loadClients()}
-async function saveClient(){const title=cName.value.trim();if(title.length<2)return showError('Informe o nome ou codinome.');
- await api('/api/faction-records/clients',{method:'POST',body:{title,category:cType.value.trim(),status:cStatus.value,location:cRegion.value.trim(),subject:cContact.value.trim(),description:cNotes.value.trim(),extra:{details:cTrust.value.trim()}}});
- showSuccess('Cliente cadastrado.');clientForm.classList.add('hidden');loadClients()}
-async function loadClients(){const rows=await api('/api/faction-records/clients')||[];clientList.innerHTML=rows.map(r=>`<div class="dossier"><h3 class="text-accent">${escapeHtml(r.title)}</h3>
-<p><b>Perfil:</b> ${escapeHtml(r.category||'-')}</p><p><b>Status:</b> ${escapeHtml(r.status||'-')}</p><p><b>Contato:</b> ${escapeHtml(r.subject||'-')}</p><p><b>Zona:</b> ${escapeHtml(r.location||'-')}</p>
-${r.extra?.details?`<p><b>Confiança:</b> ${escapeHtml(r.extra.details)}</p>`:''}${r.description?`<p class="text-muted">${escapeHtml(r.description)}</p>`:''}</div>`).join('')||'<div class="card">Nenhum cliente cadastrado.</div>'}
-</script></body></html>
+function closeClient(){clientForm.classList.add('hidden');cPhoto.value=''}
+async function initClients(){
+ const u=checkAuth();if(!u)return;
+ if(u.role!=='super_admin'&&u.factionSlug!=='mercenaries'){location.href='/unauthorized.html';return}
+ loadClients()
+}
+
+async function uploadClientPhoto(id){
+ const file=cPhoto.files[0];
+ if(!file)return;
+ if(file.size>5*1024*1024)throw new Error('A foto deve ter no máximo 5 MB.');
+ const fd=new FormData();
+ fd.append('photo',file);
+ const token=localStorage.getItem('stalker_token');
+ const res=await fetch(`/api/mercenary/clients/${id}/photo`,{
+   method:'POST',
+   headers:{Authorization:token},
+   body:fd
+ });
+ const data=await res.json();
+ if(!res.ok)throw new Error(data.error||'Erro ao enviar foto.');
+}
+
+async function saveClient(){
+ const title=cName.value.trim();
+ if(title.length<2)return showError('Informe o nome ou codinome.');
+ try{
+   const created=await api('/api/faction-records/clients',{
+     method:'POST',
+     body:{
+       title,
+       category:cType.value.trim(),
+       status:cStatus.value,
+       location:cRegion.value.trim(),
+       subject:cContact.value.trim(),
+       description:cNotes.value.trim(),
+       extra:{details:cTrust.value.trim()}
+     }
+   });
+   if(cPhoto.files[0])await uploadClientPhoto(created.id);
+   showSuccess('Cliente cadastrado.');
+   closeClient();
+   loadClients();
+ }catch(e){showError(e.message||'Erro ao cadastrar cliente.')}
+}
+
+async function removePhoto(id){
+ if(!confirm('Remover a foto deste cliente?'))return;
+ try{
+   await api(`/api/mercenary/clients/${id}/photo`,{method:'DELETE'});
+   showSuccess('Foto removida.');
+   loadClients();
+ }catch(e){console.error(e)}
+}
+
+async function loadClients(){
+ const rows=await api('/api/faction-records/clients')||[];
+ clientList.innerHTML=rows.map(r=>`<div class="dossier">
+ <div>
+ ${r.extra?.photo?`<img class="client-photo" src="${escapeHtml(r.extra.photo)}" alt="Foto do cliente">`:`<div class="photo-placeholder">☠</div>`}
+ ${r.extra?.photo?`<button class="btn-secondary w-auto" style="margin-top:8px;width:100%" onclick="removePhoto(${r.id})">REMOVER FOTO</button>`:''}
+ </div>
+ <div>
+ <h3 class="text-accent">${escapeHtml(r.title)}</h3>
+ <p><b>Perfil:</b> ${escapeHtml(r.category||'-')}</p>
+ <p><b>Status:</b> ${escapeHtml(r.status||'-')}</p>
+ <p><b>Contato:</b> ${escapeHtml(r.subject||'-')}</p>
+ <p><b>Zona:</b> ${escapeHtml(r.location||'-')}</p>
+ ${r.extra?.details?`<p><b>Confiança:</b> ${escapeHtml(r.extra.details)}</p>`:''}
+ ${r.description?`<p class="text-muted">${escapeHtml(r.description)}</p>`:''}
+ </div>
+ </div>`).join('')||'<div class="card">Nenhum cliente cadastrado.</div>'
+}
+</script>
+</body>
+</html>
