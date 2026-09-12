@@ -204,24 +204,83 @@ async function initDb() {
                 }
             }
 
-            // Migrate Users & Create Admin
+            // Migrate legacy users when the new users table is still empty
             const userCount = await dbGet(`SELECT COUNT(*) as count FROM users`);
             if (userCount.count === 0) {
-                const adminUser = process.env.ADMIN_USERNAME || 'admin';
-                const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
-                const hash = await bcrypt.hash(adminPass, 10);
-                await dbRun(`INSERT INTO users (username, password_hash, name, faction_id, role) VALUES (?, ?, ?, NULL, 'super_admin')`,
-                    [adminUser, hash, 'System Administrator']);
-                
                 try {
                     const oldUsers = await dbAll(`SELECT * FROM usuarios`);
                     for (const u of oldUsers) {
                         const role = u.role === 'admin' ? 'faction_admin' : 'operator';
-                        await dbRun(`INSERT OR IGNORE INTO users (username, password_hash, name, faction_id, role, active) VALUES (?, ?, ?, 2, ?, 1)`,
-                            [u.usuario, u.senha, u.nome, role]);
+                        await dbRun(
+                            `INSERT OR IGNORE INTO users (username, password_hash, name, faction_id, role, active)
+                             VALUES (?, ?, ?, 2, ?, 1)`,
+                            [u.usuario, u.senha, u.nome, role]
+                        );
                     }
-                } catch (e) { console.log('No old usuarios table to migrate.'); }
+                } catch (e) {
+                    console.log('No old usuarios table to migrate.');
+                }
             }
+
+            // Environment-controlled super admin.
+            // ADMIN_USERNAME + ADMIN_PASSWORD are the source of truth on every startup.
+            const adminUser = (process.env.ADMIN_USERNAME || '').trim();
+            const adminPass = process.env.ADMIN_PASSWORD || '';
+
+            if (adminUser && adminPass) {
+                const hash = await bcrypt.hash(adminPass, 10);
+                const existingAdmin = await dbGet(
+                    `SELECT id FROM users WHERE username = ?`,
+                    [adminUser]
+                );
+
+                if (existingAdmin) {
+                    await dbRun(
+                        `UPDATE users
+                         SET password_hash = ?,
+                             name = ?,
+                             faction_id = NULL,
+                             role = 'super_admin',
+                             active = 1,
+                             updated_at = CURRENT_TIMESTAMP
+                         WHERE id = ?`,
+                        [hash, 'System Administrator', existingAdmin.id]
+                    );
+                    console.log(`Environment admin synchronized: ${adminUser}`);
+                } else {
+                    await dbRun(
+                        `INSERT INTO users (
+                            username,
+                            password_hash,
+                            name,
+                            faction_id,
+                            role,
+                            active
+                        ) VALUES (?, ?, ?, NULL, 'super_admin', 1)`,
+                        [adminUser, hash, 'System Administrator']
+                    );
+                    console.log(`Environment admin created: ${adminUser}`);
+                }
+            } else if (NODE_ENV === 'production') {
+                console.warn(
+                    'ADMIN_USERNAME/ADMIN_PASSWORD are not both set; environment admin sync skipped.'
+                );
+            } else if (userCount.count === 0) {
+                const hash = await bcrypt.hash('admin123', 10);
+                await dbRun(
+                    `INSERT INTO users (
+                        username,
+                        password_hash,
+                        name,
+                        faction_id,
+                        role,
+                        active
+                    ) VALUES ('admin', ?, 'System Administrator', NULL, 'super_admin', 1)`,
+                    [hash]
+                );
+                console.warn('Development admin created with default credentials.');
+            }
+
             console.log('Database initialized.');
         } catch (err) {
             console.error('Database Init Error:', err);
