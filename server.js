@@ -229,26 +229,40 @@ async function initDb() {
 
             if (adminUser && adminPass) {
                 const hash = await bcrypt.hash(adminPass, 10);
-                const existingAdmin = await dbGet(
-                    `SELECT id FROM users WHERE username = ?`,
+
+                // Prefer an exact username match. If none exists, reuse a case-insensitive
+                // match so Salvatore/salvatore do not become duplicate accounts.
+                let existingAdmin = await dbGet(
+                    `SELECT id, username FROM users WHERE username = ?`,
                     [adminUser]
                 );
+                if (!existingAdmin) {
+                    existingAdmin = await dbGet(
+                        `SELECT id, username FROM users WHERE username = ? COLLATE NOCASE ORDER BY id ASC LIMIT 1`,
+                        [adminUser]
+                    );
+                }
+
+                let environmentAdminId;
 
                 if (existingAdmin) {
                     await dbRun(
                         `UPDATE users
-                         SET password_hash = ?,
+                         SET username = ?,
+                             password_hash = ?,
                              name = ?,
                              faction_id = NULL,
                              role = 'super_admin',
                              active = 1,
                              updated_at = CURRENT_TIMESTAMP
                          WHERE id = ?`,
-                        [hash, 'System Administrator', existingAdmin.id]
+                        [adminUser, hash, 'System Administrator', existingAdmin.id]
                     );
+                    environmentAdminId = existingAdmin.id;
+
                     console.log(`Environment admin synchronized: ${adminUser}`);
                 } else {
-                    await dbRun(
+                    const createdAdmin = await dbRun(
                         `INSERT INTO users (
                             username,
                             password_hash,
@@ -259,7 +273,23 @@ async function initDb() {
                         ) VALUES (?, ?, ?, NULL, 'super_admin', 1)`,
                         [adminUser, hash, 'System Administrator']
                     );
+                    environmentAdminId = createdAdmin.lastID;
+
                     console.log(`Environment admin created: ${adminUser}`);
+                }
+
+                // Remove duplicate accounts that differ only by uppercase/lowercase.
+                await dbRun(
+                    `DELETE FROM users WHERE username = ? COLLATE NOCASE AND id <> ?`,
+                    [adminUser, environmentAdminId]
+                );
+
+                // Remove the old default @admin account when another environment admin is used.
+                if (adminUser.toLowerCase() !== 'admin') {
+                    await dbRun(
+                        `DELETE FROM users WHERE username = 'admin' COLLATE NOCASE AND id <> ?`,
+                        [environmentAdminId]
+                    );
                 }
             } else if (NODE_ENV === 'production') {
                 console.warn(
@@ -278,6 +308,7 @@ async function initDb() {
                     ) VALUES ('admin', ?, 'System Administrator', NULL, 'super_admin', 1)`,
                     [hash]
                 );
+
                 console.warn('Development admin created with default credentials.');
             }
 
@@ -567,10 +598,23 @@ app.put('/api/users/:id', auth, requireCapability('users:manage'), async (req, r
     } catch (e) { next(e); }
 });
 
-app.delete('/api/users/:id', auth, requireCapability('users:manage'), async (req, res) => {
-    if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete self' });
-    await dbRun(`UPDATE users SET active = 0 WHERE id = ?`, [req.params.id]);
-    res.json({ success: true });
+app.delete('/api/users/:id', auth, requireCapability('users:manage'), async (req, res, next) => {
+    try {
+        const targetId = parseInt(req.params.id);
+        if (targetId === req.user.id) {
+            return res.status(400).json({ error: 'Cannot delete self' });
+        }
+
+        const targetUser = await dbGet(`SELECT id, username FROM users WHERE id = ?`, [targetId]);
+        if (!targetUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        await dbRun(`DELETE FROM users WHERE id = ?`, [targetId]);
+        res.json({ success: true, deleted: true });
+    } catch (e) {
+        next(e);
+    }
 });
 
 // --- MEMBROS (LEGACY USERS) ---
@@ -605,10 +649,23 @@ app.put('/api/membros/:id', auth, requireCapability('users:manage'), async (req,
     } catch (e) { next(e); }
 });
 
-app.delete('/api/membros/:id', auth, requireCapability('users:manage'), async (req, res) => {
-    if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete self' });
-    await dbRun(`UPDATE users SET active = 0 WHERE id = ?`, [req.params.id]);
-    res.json({ success: true });
+app.delete('/api/membros/:id', auth, requireCapability('users:manage'), async (req, res, next) => {
+    try {
+        const targetId = parseInt(req.params.id);
+        if (targetId === req.user.id) {
+            return res.status(400).json({ error: 'Cannot delete self' });
+        }
+
+        const targetUser = await dbGet(`SELECT id FROM users WHERE id = ?`, [targetId]);
+        if (!targetUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        await dbRun(`DELETE FROM users WHERE id = ?`, [targetId]);
+        res.json({ success: true, deleted: true });
+    } catch (e) {
+        next(e);
+    }
 });
 
 // --- STALKERS ---
