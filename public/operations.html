@@ -16,7 +16,7 @@
 <div id="opsList" class="ops"></div></div>
 <script src="app.js"></script><script>
 let editing=null;let opCache=[];
-function isMercLeader(){const u=getUser();return u&&(u.role==='super_admin'||u.role==='faction_admin')}
+function isMercLeader(){const u=getUser();return u&&u.role==='super_admin'}
 function canCreateOp(){const u=getUser();return u&&(u.role==='super_admin'||['operator','commander','faction_admin'].includes(u.role))}
 function openOp(r=null){if(!canCreateOp())return showError('Seu cargo não pode criar operações.');editing=r?.id||null;oTitle.value=r?.title||'';oContract.value=r?.extra?.contractCode||'';oLocation.value=r?.location||'';oObjective.value=r?.subject||'';oRisk.value=r?.extra?.risk||'medio';oReward.value=r?.extra?.reward||'';oTeam.value=r?.extra?.team||'';oDesc.value=r?.description||'';opForm.classList.remove('hidden')}
 function closeOp(){editing=null;opForm.classList.add('hidden')}

@@ -12,11 +12,19 @@ function sfInit(){const u=checkAuth();if(!u)return;const f=sfFaction();if(u.role
 function sfMoney(n){return Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' RU'}
 function sfCanWrite(){const u=sfUser();return u&&['super_admin','faction_admin','commander'].includes(u.role)}
 function sfLeader(){const u=sfUser();return u&&(u.role==='super_admin'||u.role==='faction_admin')}
+function sfCanDelete(){const u=sfUser();return !!u&&u.role==='super_admin'}
 function sfEsc(v){return escapeHtml(String(v??''))}
 function sfDate(v){return v?formatDateTime(v):'-'}
 async function sfDashboard(){sfInit();const d=await api('/api/faction-dashboard');const c=window.SF_PAGE.dashboard;document.getElementById('sfTitle').textContent=c.title;document.getElementById('sfSub').textContent=c.sub;document.getElementById('sfCode').setAttribute('data-code',sfCfg().code);const vals=c.stats(d);document.getElementById('sfStats').innerHTML=vals.map(x=>`<div class="sf-stat"><b>${sfEsc(x[1])}</b><span>${sfEsc(x[0])}</span></div>`).join('');const mods={};(d.records||[]).forEach(r=>{mods[r.module_code]=(mods[r.module_code]||0)+Number(r.qty||0)});document.getElementById('sfOps').innerHTML=c.panels(d,mods);document.getElementById('sfRecent').innerHTML=(d.latest||[]).map(a=>`<div class="sf-event"><b>${sfEsc(a.action)}</b><div class="sf-meta">${sfEsc(a.user_name||'Sistema')} • ${sfDate(a.created_at)}</div></div>`).join('')||'<div class="sf-empty">Sem atividade recente.</div>'}
 async function sfBank(){sfInit();const page=window.SF_PAGE;document.getElementById('bankTitle').textContent=page.title;document.getElementById('bankSub').textContent=page.sub;const inp=document.getElementById('bDate');const today=new Date().toISOString().slice(0,10);inp.min=today;inp.value=today;await sfLoadBank()}
-async function sfLoadBank(){const d=await api('/api/bank');window._sfBalance=Number(d.balance||0);document.getElementById('bBalance').textContent=sfMoney(d.balance);document.getElementById('bIn').textContent=sfMoney(d.total_entradas);document.getElementById('bOut').textContent=sfMoney(d.total_saidas);document.getElementById('bList').innerHTML=(d.transactions||[]).map(t=>`<div class="sf-card"><div class="sf-tag">${t.type==='entrada'?'ENTRADA':'SAÍDA'}</div><h3>${sfEsc(t.reason)}</h3><div class="sf-meta">${sfDate(t.transaction_date)} • ${sfEsc(t.user_name||t.username||'Sistema')}</div><b style="color:${t.type==='entrada'?'#32d583':'#ef5350'}">${t.type==='entrada'?'+':'-'}${sfMoney(t.amount)}</b></div>`).join('')||'<div class="sf-empty">Nenhuma movimentação.</div>'}
+async function sfLoadBank(){const d=await api('/api/bank');window._sfBalance=Number(d.balance||0);document.getElementById('bBalance').textContent=sfMoney(d.balance);document.getElementById('bIn').textContent=sfMoney(d.total_entradas);document.getElementById('bOut').textContent=sfMoney(d.total_saidas);document.getElementById('bList').innerHTML=(d.transactions||[]).map(t=>`<div class="sf-card"><div class="sf-tag">${t.type==='entrada'?'ENTRADA':'SAÍDA'}</div><h3>${sfEsc(t.reason)}</h3><div class="sf-meta">${sfDate(t.transaction_date)} • ${sfEsc(t.user_name||t.username||'Sistema')}</div><b style="color:${t.type==='entrada'?'#32d583':'#ef5350'}">${t.type==='entrada'?'+':'-'}${sfMoney(t.amount)}</b>${sfCanDelete()?`<div class="sf-actions"><button class="btn-danger w-auto" onclick="sfDeleteBankTransaction(${t.id})">EXCLUIR LANÇAMENTO</button></div>`:''}</div>`).join('')||'<div class="sf-empty">Nenhuma movimentação.</div>'}
+async function sfDeleteBankTransaction(id){
+ if(!sfCanDelete())return showError('Somente o Super Admin pode excluir lançamentos bancários.');
+ if(!confirm('Excluir permanentemente este lançamento do banco?'))return;
+ await api(`/api/bank/${id}`,{method:'DELETE'});
+ showSuccess('Lançamento excluído e registrado na auditoria.');
+ await sfLoadBank();
+}
 async function sfSaveBank(){const type=bType.value,amount=Number(bAmount.value),reason=bReason.value.trim(),date=bDate.value;if(!type||!amount||!reason||!date)return showError('Preencha os campos.');if(type==='saida'&&amount>window._sfBalance)return showError('Saldo insuficiente.');const today=new Date().toISOString().slice(0,10);if(date<today)return showError('Data passada não é permitida.');await api('/api/bank',{method:'POST',body:{type,amount,reason,transaction_date:date}});showSuccess('Movimentação registrada.');bAmount.value='';bReason.value='';await sfLoadBank()}
 
 const RECORDS = {
@@ -43,23 +51,51 @@ const RECORDS = {
 let sfEditId=null,sfRows=[];
 function sfRecordConfig(){return RECORDS[sfFaction()][window.SF_PAGE.module]}
 async function sfRecords(){sfInit();const c=sfRecordConfig();moduleTitle.textContent=c.title;moduleSub.textContent=c.sub;newBtn.textContent=`+ NOVO ${c.singular}`;if(!sfCanWrite())newBtn.style.display='none';buildRecordForm();await sfLoadRecords()}
-function buildRecordForm(r=null){const c=sfRecordConfig();formFields.innerHTML=`<div class="full"><label>TÍTULO / IDENTIFICAÇÃO</label><input id="rTitle"></div><div><label>STATUS</label><select id="rStatus">${c.statuses.map(s=>`<option>${s}</option>`).join('')}</select></div><div><label>LOCAL / SETOR</label><input id="rLocation"></div>${c.fields.map(([k,l])=>`<div><label>${l.toUpperCase()}</label><input data-extra="${k}"></div>`).join('')}<div class="full"><label>DESCRIÇÃO / CONTEXTO</label><textarea id="rDescription" rows="5"></textarea></div>`;if(r){rTitle.value=r.title||'';rStatus.value=r.status||c.statuses[0];rLocation.value=r.location||'';rDescription.value=r.description||'';document.querySelectorAll('[data-extra]').forEach(i=>i.value=r.extra?.[i.dataset.extra]||'')}}
+function buildRecordForm(r=null){const c=sfRecordConfig();formFields.innerHTML=`<div class="full"><label>TÍTULO / IDENTIFICAÇÃO</label><input id="rTitle"></div><div><label>STATUS</label><select id="rStatus">${c.statuses.map(s=>`<option>${s}</option>`).join('')}</select></div><div><label>LOCAL / SETOR</label><input id="rLocation"></div>${c.fields.map(([k,l])=>`<div><label>${l.toUpperCase()}</label><input data-extra="${k}"></div>`).join('')}<div class="full"><label>DESCRIÇÃO / CONTEXTO</label><textarea id="rDescription" rows="5"></textarea></div><div class="full"><label>FOTO / IMAGEM (OPCIONAL)</label><input id="rPhoto" type="file" accept="image/*">${r?.extra?.photo?`<div style="margin-top:8px"><img src="${sfEsc(r.extra.photo)}" style="max-width:180px;max-height:140px;object-fit:cover;border:1px solid var(--line)"></div>`:''}</div>`;if(r){rTitle.value=r.title||'';rStatus.value=r.status||c.statuses[0];rLocation.value=r.location||'';rDescription.value=r.description||'';document.querySelectorAll('[data-extra]').forEach(i=>i.value=r.extra?.[i.dataset.extra]||'')}}
 function sfOpenRecord(r=null){sfEditId=r?.id||null;buildRecordForm(r);recordForm.classList.remove('hidden');formHeading.textContent=sfEditId?`EDITAR ${sfRecordConfig().singular}`:`NOVO ${sfRecordConfig().singular}`;scrollTo({top:0,behavior:'smooth'})}
 function sfCloseRecord(){sfEditId=null;recordForm.classList.add('hidden')}
-async function sfSaveRecord(){const extra={};document.querySelectorAll('[data-extra]').forEach(i=>extra[i.dataset.extra]=i.value.trim());const body={title:rTitle.value.trim(),category:sfRecordConfig().singular,status:rStatus.value,location:rLocation.value.trim(),subject:Object.values(extra)[0]||'',description:rDescription.value.trim(),extra};if(body.title.length<2)return showError('Informe a identificação.');await api(sfEditId?`/api/faction-records/${window.SF_PAGE.module}/${sfEditId}`:`/api/faction-records/${window.SF_PAGE.module}`,{method:sfEditId?'PUT':'POST',body});showSuccess('Registro salvo.');sfCloseRecord();sfLoadRecords()}
-async function sfDeleteRecord(id){if(!confirm('Excluir permanentemente este registro?'))return;await api(`/api/faction-records/${window.SF_PAGE.module}/${id}`,{method:'DELETE'});showSuccess('Registro excluído.');sfLoadRecords()}
+async function sfSaveRecord(){
+ const extra={};document.querySelectorAll('[data-extra]').forEach(i=>extra[i.dataset.extra]=i.value.trim());
+ const title=rTitle.value.trim();if(title.length<2)return showError('Informe a identificação.');
+ const fd=new FormData();
+ fd.append('title',title);fd.append('category',sfRecordConfig().singular);fd.append('status',rStatus.value);
+ fd.append('location',rLocation.value.trim());fd.append('subject',Object.values(extra)[0]||'');
+ fd.append('description',rDescription.value.trim());fd.append('extra',JSON.stringify(extra));
+ if(rPhoto?.files?.[0])fd.append('foto',rPhoto.files[0]);
+ await apiForm(sfEditId?`/api/faction-records/${window.SF_PAGE.module}/${sfEditId}`:`/api/faction-records/${window.SF_PAGE.module}`,fd,sfEditId?'PUT':'POST');
+ showSuccess('Registro salvo.');sfCloseRecord();sfLoadRecords();
+}
+async function sfDeleteRecord(id){if(!sfCanDelete())return showError('Somente o Super Admin pode excluir registros.');if(!confirm('Excluir permanentemente este registro?'))return;await api(`/api/faction-records/${window.SF_PAGE.module}/${id}`,{method:'DELETE'});showSuccess('Registro excluído.');sfLoadRecords()}
 async function sfLoadRecords(){sfRows=await api(`/api/faction-records/${window.SF_PAGE.module}`)||[];sfRenderRecords()}
-function sfRenderRecords(){const c=sfRecordConfig(),q=(recordSearch?.value||'').toLowerCase(),status=recordFilter?.value||'';const rows=sfRows.filter(r=>(!q||JSON.stringify(r).toLowerCase().includes(q))&&(!status||r.status===status));recordFilter.innerHTML='<option value="">TODOS STATUS</option>'+c.statuses.map(s=>`<option ${status===s?'selected':''}>${s}</option>`).join('');recordList.innerHTML=rows.map(r=>`<div class="sf-card"><span class="sf-tag">${sfEsc(r.status)}</span><h3>${sfEsc(r.title)}</h3><div class="sf-meta">${sfEsc(r.location||'SEM LOCAL')} • ${sfEsc(r.created_by_name||'Sistema')}</div>${c.fields.map(([k,l])=>r.extra?.[k]?`<p><b>${l}:</b> ${sfEsc(r.extra[k])}</p>`:'').join('')}${r.description?`<p>${sfEsc(r.description)}</p>`:''}${sfCanWrite()?`<div class="sf-actions"><button class="btn-secondary w-auto" onclick='sfOpenRecord(${JSON.stringify(r).replace(/'/g,"&#39;")})'>EDITAR</button><button class="btn-danger w-auto" onclick="sfDeleteRecord(${r.id})">EXCLUIR</button></div>`:''}</div>`).join('')||'<div class="sf-empty">Nenhum registro encontrado.</div>'}
+function sfRenderRecords(){const c=sfRecordConfig(),q=(recordSearch?.value||'').toLowerCase(),status=recordFilter?.value||'';const rows=sfRows.filter(r=>(!q||JSON.stringify(r).toLowerCase().includes(q))&&(!status||r.status===status));recordFilter.innerHTML='<option value="">TODOS STATUS</option>'+c.statuses.map(s=>`<option ${status===s?'selected':''}>${s}</option>`).join('');recordList.innerHTML=rows.map(r=>`<div class="sf-card"><span class="sf-tag">${sfEsc(r.status)}</span><h3>${sfEsc(r.title)}</h3><div class="sf-meta">${sfEsc(r.location||'SEM LOCAL')} • ${sfEsc(r.created_by_name||'Sistema')}</div>${c.fields.map(([k,l])=>r.extra?.[k]?`<p><b>${l}:</b> ${sfEsc(r.extra[k])}</p>`:'').join('')}${r.extra?.photo?`<img src="${sfEsc(r.extra.photo)}" style="width:100%;max-height:210px;object-fit:cover;border:1px solid var(--line);margin:8px 0">`:''}${r.description?`<p>${sfEsc(r.description)}</p>`:''}${sfCanWrite()?`<div class="sf-actions"><button class="btn-secondary w-auto" onclick='sfOpenRecord(${JSON.stringify(r).replace(/'/g,"&#39;")})'>EDITAR</button>${sfCanDelete()?`<button class="btn-danger w-auto" onclick="sfDeleteRecord(${r.id})">EXCLUIR</button>`:''}</div>`:''}</div>`).join('')||'<div class="sf-empty">Nenhum registro encontrado.</div>'}
 
 async function sfMissions(){sfInit();const p=window.SF_PAGE;missionTitle.textContent=p.title;missionSub.textContent=p.sub;await sfLoadMissions()}
-async function sfLoadMissions(){const rows=await api('/api/missoes')||[];window._missions=rows;missionList.innerHTML=rows.map(m=>`<div class="sf-card"><span class="sf-tag">${sfEsc(m.status||'pendente')}</span><h3>${sfEsc(m.titulo)}</h3><p>${sfEsc(m.descricao||'')}</p><div class="sf-meta">Recompensa: ${sfEsc(m.recompensa||0)} RU</div>${sfCanWrite()?`<div class="sf-actions"><button class="btn-success w-auto" onclick="sfMissionStatus(${m.id},'em andamento')">INICIAR</button><button class="btn-secondary w-auto" onclick="sfMissionStatus(${m.id},'concluida')">CONCLUIR</button><button class="btn-danger w-auto" onclick="sfDeleteMission(${m.id})">EXCLUIR</button></div>`:''}</div>`).join('')||'<div class="sf-empty">Nenhuma operação cadastrada.</div>'}
-async function sfCreateMission(){if(!mTitle.value.trim())return showError('Informe o título.');await api('/api/missoes',{method:'POST',body:{titulo:mTitle.value.trim(),descricao:mDesc.value.trim(),recompensa:Number(mReward.value||0)}});showSuccess('Operação registrada.');missionForm.classList.add('hidden');sfLoadMissions()}
+async function sfLoadMissions(){const rows=await api('/api/missoes')||[];window._missions=rows;missionList.innerHTML=rows.map(m=>`<div class="sf-card"><span class="sf-tag">${sfEsc(m.status||'pendente')}</span><h3>${sfEsc(m.titulo)}</h3><p>${sfEsc(m.descricao||'')}</p><div class="sf-meta">Recompensa: ${sfEsc(m.recompensa||0)} RU</div>${m.foto?`<img src="${sfEsc(m.foto)}" style="width:100%;max-height:220px;object-fit:cover;border:1px solid var(--line);margin:8px 0">`:''}${sfCanWrite()?`<div class="sf-actions"><button class="btn-success w-auto" onclick="sfMissionStatus(${m.id},'em andamento')">INICIAR</button><button class="btn-secondary w-auto" onclick="sfMissionStatus(${m.id},'concluida')">CONCLUIR</button>${sfCanDelete()?`<button class="btn-danger w-auto" onclick="sfDeleteMission(${m.id})">EXCLUIR</button>`:''}</div>`:''}</div>`).join('')||'<div class="sf-empty">Nenhuma operação cadastrada.</div>'}
+async function sfCreateMission(){
+ if(!mTitle.value.trim())return showError('Informe o título.');
+ const fd=new FormData();fd.append('titulo',mTitle.value.trim());fd.append('descricao',mDesc.value.trim());fd.append('recompensa',Number(mReward.value||0));
+ if(typeof mPhoto!=='undefined'&&mPhoto?.files?.[0])fd.append('foto',mPhoto.files[0]);
+ await apiForm('/api/missoes',fd,'POST');
+ showSuccess('Operação registrada.');missionForm.classList.add('hidden');sfLoadMissions();
+}
 async function sfMissionStatus(id,status){const m=window._missions.find(x=>x.id===id);await api(`/api/missoes/${id}`,{method:'PUT',body:{titulo:m.titulo,descricao:m.descricao,recompensa:m.recompensa,status}});sfLoadMissions()}
-async function sfDeleteMission(id){if(!confirm('Excluir esta operação?'))return;await api(`/api/missoes/${id}`,{method:'DELETE'});sfLoadMissions()}
+async function sfDeleteMission(id){if(!sfCanDelete())return showError('Somente o Super Admin pode excluir missões.');if(!confirm('Excluir esta operação?'))return;await api(`/api/missoes/${id}`,{method:'DELETE'});sfLoadMissions()}
 
 async function sfTeam(){sfInit();const f=sfCfg();teamTitle.textContent=window.SF_PAGE.title;teamSub.textContent=window.SF_PAGE.sub;if(!sfLeader())newUserBtn.style.display='none';await sfLoadTeam()}
 async function sfLoadTeam(){const rows=await api('/api/users')||[];teamList.innerHTML=rows.map(u=>`<div class="sf-card"><h3>${sfEsc(u.name)} <small>@${sfEsc(u.username)}</small></h3><span class="sf-tag">${sfEsc(u.role)}</span><span class="sf-tag">${u.active?'ATIVO':'INATIVO'}</span><div class="sf-meta">Último acesso: ${sfDate(u.last_login_at)}</div></div>`).join('')||'<div class="sf-empty">Nenhum membro.</div>'}
 async function sfCreateUser(){const body={name:uName.value.trim(),username:uLogin.value.trim(),password:uPass.value,role:uRole.value,factionId:sfUser().factionId};if(body.name.length<2||body.username.length<3||body.password.length<6)return showError('Confira nome, login e senha.');await api('/api/users',{method:'POST',body});showSuccess('Membro adicionado.');userForm.classList.add('hidden');sfLoadTeam()}
+
+
+let dutyStalkerRows=[];
+function sfDutySerializeRelations(){const obj={};document.querySelectorAll('.duty-rel').forEach(el=>obj[el.dataset.fac]=el.value);return JSON.stringify(obj)}
+function sfDutyApplyRelations(raw){let data={};try{data=raw?JSON.parse(raw):{}}catch(e){}document.querySelectorAll('.duty-rel').forEach(el=>{if(data[el.dataset.fac]) el.value=data[el.dataset.fac]})}
+function sfDutyResetForm(){dutyEditId.value='';dutyStalkerForm.reset();sfDutyApplyRelations('{}');document.getElementById('dutyCancelBtn').style.display='none';document.querySelector('.duty-form-title').textContent='NOVO REGISTRO DE STALKER';}
+async function sfDutyOperators(){sfInit();if(!sfCanWrite()) document.querySelector('.duty-form-panel').style.display='none';sfDutyResetForm();await sfDutyLoadStalkers()}
+async function sfDutyLoadStalkers(){dutyStalkerRows=await api('/api/stalkers')||[];const total=dutyStalkerRows.length;document.getElementById('dutyStatTotal').textContent=total;document.getElementById('dutyStatVeteran').textContent=dutyStalkerRows.filter(s=>Number(s.reputacao||0)>=100).length;document.getElementById('dutyStatBlack').textContent=dutyStalkerRows.filter(s=>Number(s.status_lista_negra||0)===1).length;document.getElementById('dutyStatRecent').textContent=total?('#'+dutyStalkerRows.slice().sort((a,b)=>Number(b.id)-Number(a.id))[0].id):'-';sfDutyRenderStalkers()}
+function sfDutyRenderStalkers(){const q=(dutySearch.value||'').toLowerCase().trim();const order=dutyOrder.value;let rows=dutyStalkerRows.filter(s=>!q||[s.nome,s.codinome,s.faccao,s.area_atuacao].join(' ').toLowerCase().includes(q));rows=rows.slice().sort((a,b)=>{switch(order){case 'id_asc': return Number(a.id)-Number(b.id);case 'rep_desc': return Number(b.reputacao||0)-Number(a.reputacao||0);case 'rep_asc': return Number(a.reputacao||0)-Number(b.reputacao||0);case 'alpha_asc': return String(a.codinome||'').localeCompare(String(b.codinome||''),'pt-BR');case 'alpha_desc': return String(b.codinome||'').localeCompare(String(a.codinome||''),'pt-BR');default:return Number(b.id)-Number(a.id)}});dutyStalkerList.innerHTML=rows.map(s=>{let rel={};try{rel=s.relacoes_faccoes?JSON.parse(s.relacoes_faccoes):{}}catch(e){}const relBadges=Object.entries(rel).slice(0,6).map(([k,v])=>`<span class="duty-rel-badge">${sfEsc(k)}: ${sfEsc(v)}</span>`).join('');return `<article class="duty-agent-card"><div>${s.foto?`<img class="duty-agent-photo" src="${sfEsc(s.foto)}" alt="Foto de ${sfEsc(s.codinome||s.nome)}">`:`<div class="duty-agent-photo placeholder">SEM FOTO<br>DE AGENTE</div>`}${Number(s.status_lista_negra||0)===1?`<div class="sf-tag" style="margin-top:8px;color:#ff8c8c;border-color:#6d2c2c">RESTRIÇÃO INTERNA</div>`:''}</div><div><div class="duty-agent-header"><div><h3>${sfEsc(s.codinome||'SEM CODINOME')}</h3><div class="duty-agent-sub">${sfEsc(s.nome||'Sem nome')} • ${sfEsc(s.faccao||'Duty')}</div></div><span class="sf-tag">REP ${Number(s.reputacao||0)}</span></div><div class="duty-agent-meta"><p><b>Área:</b> ${sfEsc(s.area_atuacao||'-')}</p><p><b>ID:</b> #${s.id}</p><p><b>Aliados:</b> ${sfEsc(s.aliados||'-')}</p><p><b>Inimigos:</b> ${sfEsc(s.inimigos||'-')}</p></div>${relBadges?`<div class="duty-rel-badges">${relBadges}</div>`:''}${s.rumores?`<p class="duty-agent-notes"><b>Notas:</b> ${sfEsc(s.rumores)}</p>`:''}${sfCanWrite()?`<div class="duty-agent-actions"><button class="btn-secondary" onclick='sfDutyEditStalker(${JSON.stringify(s).replace(/'/g,"&#39;")})'>EDITAR</button>${sfCanDelete()?`<button class="btn-danger" onclick="sfDutyDeleteStalker(${s.id})">EXCLUIR</button>`:''}</div>`:''}</div></article>`}).join('')||'<div class="sf-empty">Nenhum agente registrado no efetivo.</div>'}
+function sfDutyEditStalker(s){dutyEditId.value=s.id||'';dutyNome.value=s.nome||'';dutyCodinome.value=s.codinome||'';dutyFaccao.value=s.faccao||'';dutyArea.value=s.area_atuacao||'';dutyAliados.value=s.aliados||'';dutyInimigos.value=s.inimigos||'';dutyRumores.value=s.rumores||'';sfDutyApplyRelations(s.relacoes_faccoes||'{}');document.getElementById('dutyCancelBtn').style.display='inline-flex';document.querySelector('.duty-form-title').textContent='EDITAR REGISTRO DE STALKER';window.scrollTo({top:0,behavior:'smooth'})}
+async function sfDutySaveStalker(){const fd=new FormData();fd.append('nome', dutyNome.value.trim());fd.append('codinome', dutyCodinome.value.trim());fd.append('faccao', dutyFaccao.value.trim()||'Duty');fd.append('area_atuacao', dutyArea.value.trim());fd.append('aliados', dutyAliados.value.trim());fd.append('inimigos', dutyInimigos.value.trim());fd.append('relacoes_faccoes', sfDutySerializeRelations());fd.append('rumores', dutyRumores.value.trim());if(dutyFoto.files[0]) fd.append('foto', dutyFoto.files[0]);const editId=dutyEditId.value;await apiForm(editId?`/api/stalkers/${editId}`:'/api/stalkers', fd, editId?'PUT':'POST');showSuccess(editId?'Registro atualizado.':'Agente registrado no efetivo.');sfDutyResetForm();await sfDutyLoadStalkers()}
+async function sfDutyDeleteStalker(id){if(!sfCanDelete())return showError('Somente o Super Admin pode excluir registros.');if(!confirm('Excluir este agente do efetivo da Duty?')) return;await api(`/api/stalkers/${id}`,{method:'DELETE'});showSuccess('Registro excluído do efetivo.');await sfDutyLoadStalkers()}
 
 async function sfEcoStalkers(){sfInit();const rows=await api('/api/stalkers')||[];stalkerList.innerHTML=rows.map(s=>`<div class="sf-card">${s.foto?`<img src="${sfEsc(s.foto)}" style="width:90px;height:110px;object-fit:cover;float:right;border:1px solid var(--line)">`:''}<span class="sf-tag">REP ${Number(s.reputacao||0)}</span><h3>${sfEsc(s.codinome||s.nome)}</h3><p><b>Nome:</b> ${sfEsc(s.nome)}</p><p><b>Facção:</b> ${sfEsc(s.faccao||'-')}</p><p><b>Área:</b> ${sfEsc(s.area_atuacao||'-')}</p><div class="sf-meta">Rumores: ${sfEsc(s.rumores||'Nenhum')}</div></div>`).join('')||'<div class="sf-empty">Nenhum stalker catalogado.</div>'}
 async function sfEcoInventory(){sfInit();const rows=await api('/api/itens')||[];document.getElementById('invCount').textContent=rows.reduce((a,x)=>a+Number(x.quantidade||0),0);invList.innerHTML=rows.map(i=>`<div class="sf-card"><span class="sf-tag">${sfEsc(i.tipo)}</span><h3>${sfEsc(i.nome)}</h3><p><b>Quantidade:</b> ${Number(i.quantidade||0)}</p><p><b>Valor-base:</b> ${sfMoney(i.valor_base)}</p></div>`).join('')||'<div class="sf-empty">Depósito vazio.</div>'}
@@ -67,3 +103,153 @@ async function sfEcoResearch(){sfInit();const rows=await api('/api/rp-experiment
 async function sfEcoReports(){sfInit();const rows=await api('/api/relatorios')||[];reportList.innerHTML=rows.map(r=>`<div class="sf-card"><span class="sf-tag">REL ${sfEsc(r.numero||r.id)}</span><h3>${sfEsc(r.objetivo||'Relatório científico')}</h3><p><b>Autor:</b> ${sfEsc(r.autor||'-')}</p><p><b>Equipe:</b> ${sfEsc(r.membros||'-')}</p><div class="sf-meta">${sfEsc(r.col1||'')} ${sfEsc(r.col2||'')} ${sfEsc(r.col3||'')}</div></div>`).join('')||'<div class="sf-empty">Nenhum relatório científico.</div>'}
 async function sfEcoHistory(){sfInit();const stalkers=await api('/api/stalkers')||[];historyList.innerHTML=stalkers.map(s=>`<div class="sf-card"><h3>${sfEsc(s.codinome||s.nome)}</h3><div class="sf-meta">Último check-in: ${sfDate(s.ultimo_checkin)} • Presenças: ${Number(s.presencas||0)}</div><p>Reputação científica: <b>${Number(s.reputacao||0)}</b></p></div>`).join('')||'<div class="sf-empty">Sem histórico de campo.</div>'}
 async function sfEcoBlacklist(){sfInit();const rows=(await api('/api/stalkers')||[]).filter(s=>Number(s.status_lista_negra)===1);blackList.innerHTML=rows.map(s=>`<div class="sf-card" style="border-color:#7f1d1d"><span class="sf-tag" style="color:#f87171">RISCO BIOLÓGICO / SEGURANÇA</span><h3>${sfEsc(s.codinome||s.nome)}</h3><p>${sfEsc(s.motivo_lista_negra||'Sem justificativa')}</p><div class="sf-meta">Área: ${sfEsc(s.area_atuacao||'-')}</div></div>`).join('')||'<div class="sf-empty">Nenhum indivíduo em restrição.</div>'}
+
+
+let sfRosterRows=[];
+
+function sfRosterRelationsJson(){
+  const obj={};
+  document.querySelectorAll('.roster-rel').forEach(el=>obj[el.dataset.fac]=el.value);
+  return JSON.stringify(obj);
+}
+
+function sfRosterApplyRelations(raw){
+  let obj={};
+  try{ obj=raw?JSON.parse(raw):{} }catch(e){}
+  document.querySelectorAll('.roster-rel').forEach(el=>{
+    if(obj[el.dataset.fac]) el.value=obj[el.dataset.fac];
+  });
+}
+
+function sfRosterReset(){
+  rosterEditId.value='';
+  rosterForm.reset();
+  sfRosterApplyRelations('{}');
+  rosterCancel.style.display='none';
+  document.querySelector('.roster-form-title').textContent='NOVO REGISTRO';
+}
+
+async function sfFactionRoster(){
+  sfInit();
+  if(!sfCanWrite()) document.querySelector('.roster-form-panel').style.display='none';
+  sfRosterReset();
+  await sfRosterLoad();
+}
+
+async function sfRosterLoad(){
+  sfRosterRows=await api('/api/stalkers')||[];
+  const total=sfRosterRows.length;
+  rosterTotal.textContent=total;
+  rosterStat2.textContent=sfRosterRows.filter(x=>Number(x.reputacao||0)>=100).length;
+  rosterStat3.textContent=sfRosterRows.filter(x=>Number(x.status_lista_negra||0)===1).length;
+  rosterRecent.textContent=total?('#'+sfRosterRows.slice().sort((a,b)=>Number(b.id)-Number(a.id))[0].id):'-';
+  sfRosterRender();
+}
+
+function sfRosterRender(){
+  const q=(rosterSearch.value||'').toLowerCase().trim();
+  const order=rosterOrder.value;
+
+  let rows=sfRosterRows.filter(s=>{
+    const hay=[s.nome,s.codinome,s.faccao,s.area_atuacao,s.aliados,s.inimigos].join(' ').toLowerCase();
+    return !q || hay.includes(q);
+  });
+
+  rows=rows.slice().sort((a,b)=>{
+    switch(order){
+      case 'id_asc': return Number(a.id)-Number(b.id);
+      case 'rep_desc': return Number(b.reputacao||0)-Number(a.reputacao||0);
+      case 'rep_asc': return Number(a.reputacao||0)-Number(b.reputacao||0);
+      case 'alpha_asc': return String(a.codinome||'').localeCompare(String(b.codinome||''),'pt-BR');
+      case 'alpha_desc': return String(b.codinome||'').localeCompare(String(a.codinome||''),'pt-BR');
+      default: return Number(b.id)-Number(a.id);
+    }
+  });
+
+  const faction=sfFaction();
+
+  rosterList.innerHTML=rows.map(s=>{
+    let rel={};
+    try{rel=s.relacoes_faccoes?JSON.parse(s.relacoes_faccoes):{}}catch(e){}
+    const badges=Object.entries(rel).slice(0,6)
+      .map(([k,v])=>`<span class="roster-rel-badge">${sfEsc(k)}: ${sfEsc(v)}</span>`).join('');
+
+    const flag = Number(s.status_lista_negra||0)===1
+      ? `<span class="sf-tag roster-alert">ALERTA / RESTRIÇÃO</span>` : '';
+
+    return `<article class="roster-card roster-card-${faction}">
+      <div>
+        ${s.foto
+          ? `<img class="roster-photo" src="${sfEsc(s.foto)}" alt="Foto">`
+          : `<div class="roster-photo placeholder">SEM FOTO</div>`}
+        ${flag}
+      </div>
+      <div>
+        <div class="roster-card-head">
+          <div>
+            <h3>${sfEsc(s.codinome||'SEM CODINOME')}</h3>
+            <div class="roster-sub">${sfEsc(s.nome||'Sem nome')} • ${sfEsc(s.faccao||sfCfg().name)}</div>
+          </div>
+          <span class="sf-tag">REP ${Number(s.reputacao||0)}</span>
+        </div>
+
+        <div class="roster-meta">
+          <p><b>Área:</b> ${sfEsc(s.area_atuacao||'-')}</p>
+          <p><b>ID:</b> #${s.id}</p>
+          <p><b>Aliados:</b> ${sfEsc(s.aliados||'-')}</p>
+          <p><b>Inimigos:</b> ${sfEsc(s.inimigos||'-')}</p>
+        </div>
+
+        ${badges?`<div class="roster-rel-badges">${badges}</div>`:''}
+        ${s.rumores?`<p class="roster-notes"><b>Notas:</b> ${sfEsc(s.rumores)}</p>`:''}
+
+        ${sfCanWrite()?`<div class="roster-actions">
+          <button class="btn-secondary w-auto" onclick='sfRosterEdit(${JSON.stringify(s).replace(/'/g,"&#39;")})'>EDITAR</button>
+          ${sfCanDelete()?`<button class="btn-danger w-auto" onclick="sfRosterDelete(${s.id})">EXCLUIR</button>`:''}
+        </div>`:''}
+      </div>
+    </article>`;
+  }).join('') || '<div class="sf-empty">Nenhum registro encontrado.</div>';
+}
+
+function sfRosterEdit(s){
+  rosterEditId.value=s.id||'';
+  rosterName.value=s.nome||'';
+  rosterCode.value=s.codinome||'';
+  rosterRole.value=s.faccao||'';
+  rosterArea.value=s.area_atuacao||'';
+  rosterAllies.value=s.aliados||'';
+  rosterEnemies.value=s.inimigos||'';
+  rosterNotes.value=s.rumores||'';
+  sfRosterApplyRelations(s.relacoes_faccoes||'{}');
+  rosterCancel.style.display='inline-flex';
+  document.querySelector('.roster-form-title').textContent='EDITAR REGISTRO';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+async function sfRosterSave(){
+  const fd=new FormData();
+  fd.append('nome',rosterName.value.trim());
+  fd.append('codinome',rosterCode.value.trim());
+  fd.append('faccao',rosterRole.value.trim()||sfCfg().name);
+  fd.append('area_atuacao',rosterArea.value.trim());
+  fd.append('aliados',rosterAllies.value.trim());
+  fd.append('inimigos',rosterEnemies.value.trim());
+  fd.append('relacoes_faccoes',sfRosterRelationsJson());
+  fd.append('rumores',rosterNotes.value.trim());
+  if(rosterPhoto.files[0]) fd.append('foto',rosterPhoto.files[0]);
+
+  const id=rosterEditId.value;
+  await apiForm(id?`/api/stalkers/${id}`:'/api/stalkers',fd,id?'PUT':'POST');
+  showSuccess(id?'Registro atualizado.':'Registro criado.');
+  sfRosterReset();
+  await sfRosterLoad();
+}
+
+async function sfRosterDelete(id){
+  if(!sfCanDelete()) return showError('Somente o Super Admin pode excluir registros.');
+  if(!confirm('Excluir este registro permanentemente?')) return;
+  await api(`/api/stalkers/${id}`,{method:'DELETE'});
+  showSuccess('Registro excluído.');
+  await sfRosterLoad();
+}

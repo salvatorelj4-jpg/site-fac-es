@@ -99,7 +99,7 @@ async function saveClient(){
 
 async function deleteClient(id, name){
  const u=getUser();
- if(!(u.role==='super_admin'||u.role==='faction_admin')){
+ if(u.role!=='super_admin'){
    return showError('Apenas o líder dos Mercenários pode excluir clientes.');
  }
 
@@ -128,7 +128,7 @@ async function loadClients(){
  <p><b>Zona:</b> ${escapeHtml(r.location||'-')}</p>
  ${r.extra?.details?`<p><b>Confiança:</b> ${escapeHtml(r.extra.details)}</p>`:''}
  ${r.description?`<p class="text-muted">${escapeHtml(r.description)}</p>`:''}
- ${(getUser().role==='super_admin'||getUser().role==='faction_admin')?`
+ ${(getUser().role==='super_admin')?`
  <div class="client-actions">
    <button class="btn-danger w-auto" onclick="deleteClient(${r.id}, '${String(r.title).replace(/'/g,"\'")}')">EXCLUIR CADASTRO</button>
  </div>`:''}

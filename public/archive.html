@@ -65,7 +65,7 @@
 <script>
 let archiveRows=[];let editingArchive=null;
 function me(){return getUser()}
-function isArchiveLeader(){const u=me();return u&&(u.role==='super_admin'||u.role==='faction_admin')}
+function isArchiveLeader(){const u=me();return u&&u.role==='super_admin'}
 function canCreateArchive(){const u=me();return u&&(u.role==='super_admin'||['operator','commander','faction_admin'].includes(u.role))}
 function canEditArchive(r){return me().role==='super_admin'||r.created_by===me().id}
 

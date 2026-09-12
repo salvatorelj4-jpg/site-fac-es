@@ -7,3 +7,62 @@
 .theme-duty .sf-hero{background:linear-gradient(120deg,#120606,#090b0d)}.theme-ecologists .sf-hero{background:linear-gradient(120deg,#031312,#061017)}.theme-bandits .sf-hero{background:linear-gradient(120deg,#151005,#090806)}.theme-freedom .sf-hero{background:linear-gradient(120deg,#071406,#07100b)}
 .sf-timeline{border-left:2px solid var(--line);padding-left:16px}.sf-event{margin:10px 0;padding-bottom:10px;border-bottom:1px solid rgba(255,255,255,.05)}.sf-progress{height:7px;background:#030506;border:1px solid var(--line);margin-top:7px}.sf-progress>i{display:block;height:100%;background:var(--accent)}
 @media(max-width:800px){.sf-stats{grid-template-columns:repeat(2,1fr)}.sf-form{grid-template-columns:1fr}.sf-body{padding-top:60px}}
+
+
+/* Duty efetivo */
+.duty-eff-wrap{max-width:1240px}.duty-eff-hero{border-top-color:#ff4d4d;background:linear-gradient(135deg,#150505,#0b0d11)}
+.duty-eff-stats{margin:16px 0}.duty-form-panel{border-color:#5f2424;background:linear-gradient(145deg,rgba(20,8,8,.98),rgba(6,8,11,.98))}.duty-form-title{color:#ff5a5a}
+.duty-stalker-form label{display:block;color:#c89d9d;font-size:11px;letter-spacing:1px;margin:0 0 6px}.duty-stalker-form input,.duty-stalker-form textarea,.duty-stalker-form select{width:100%}
+.duty-grid-three{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}.duty-diplomacy{margin:12px 0;border:1px solid #5f2424;background:rgba(14,7,7,.9)}.duty-diplomacy summary{cursor:pointer;padding:12px 14px;color:#ffb4b4;font-weight:700;letter-spacing:1px}.duty-diplomacy-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px}
+.duty-toolbar{margin-top:20px}.duty-toolbar input,.duty-toolbar select{border-color:#692d2d}
+.duty-stalker-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;margin-top:16px}
+.duty-agent-card{display:grid;grid-template-columns:110px 1fr;gap:14px;padding:16px;border:1px solid #612626;background:linear-gradient(145deg,rgba(18,8,8,.98),rgba(5,7,10,.98));box-shadow:inset 0 0 28px rgba(0,0,0,.35)}
+.duty-agent-photo{width:110px;height:138px;object-fit:cover;border:1px solid #6d2c2c;background:#090b0e}.duty-agent-photo.placeholder{display:flex;align-items:center;justify-content:center;color:#aa7f7f;font-size:12px;text-align:center;padding:10px}
+.duty-agent-header{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.duty-agent-header h3{margin:0;color:#ff6464;font-size:20px;letter-spacing:1px}.duty-agent-sub{color:#d7c9c9;font-size:14px;margin:4px 0 10px}
+.duty-agent-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-bottom:10px}.duty-agent-meta p,.duty-agent-notes{margin:0;color:#d7dce0;font-size:13px}.duty-agent-notes{padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}
+.duty-rel-badges{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.duty-rel-badge{padding:3px 7px;border:1px solid #643131;font-size:10px;letter-spacing:1px;color:#ffb8b8;background:rgba(255,77,77,.06)}
+.duty-agent-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.duty-agent-actions button{width:auto}
+@media(max-width:900px){.duty-grid-three,.duty-diplomacy-grid{grid-template-columns:1fr 1fr}}@media(max-width:640px){.duty-grid-three,.duty-diplomacy-grid{grid-template-columns:1fr}.duty-agent-card{grid-template-columns:1fr}.duty-agent-photo{width:100%;height:200px}}
+
+
+/* Shared faction roster — Ecologists / Bandits / Freedom */
+.roster-wrap{max-width:1240px}
+.roster-stats{margin:16px 0}
+.roster-form-panel{background:linear-gradient(145deg,rgba(10,14,18,.98),rgba(3,6,9,.98))}
+.roster-form label{display:block;color:var(--muted);font-size:11px;letter-spacing:1px;margin-bottom:6px}
+.roster-form input,.roster-form textarea,.roster-form select{width:100%}
+.roster-grid-three{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px}
+.roster-relations{margin:12px 0;border:1px solid var(--line);background:rgba(0,0,0,.25)}
+.roster-relations summary{cursor:pointer;padding:12px 14px;color:var(--accent);font-weight:700;letter-spacing:1px}
+.roster-relations-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px}
+.roster-toolbar{margin-top:20px}
+.roster-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(370px,1fr));gap:14px;margin-top:16px}
+.roster-card{display:grid;grid-template-columns:110px 1fr;gap:14px;padding:16px;border:1px solid var(--line);background:linear-gradient(145deg,rgba(8,12,16,.98),rgba(2,5,8,.98))}
+.roster-photo{width:110px;height:138px;object-fit:cover;border:1px solid var(--line);background:#070a0d}
+.roster-photo.placeholder{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12px;text-align:center;padding:10px}
+.roster-card-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.roster-card-head h3{margin:0;color:var(--accent);font-size:20px;letter-spacing:1px}
+.roster-sub{color:#d0d7dd;font-size:14px;margin:4px 0 10px}
+.roster-meta{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin-bottom:10px}
+.roster-meta p,.roster-notes{margin:0;color:#d7dce0;font-size:13px}
+.roster-notes{padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}
+.roster-rel-badges{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.roster-rel-badge{padding:3px 7px;border:1px solid var(--line);font-size:10px;letter-spacing:1px;color:var(--accent);background:rgba(255,255,255,.02)}
+.roster-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.roster-alert{display:block;margin-top:8px;color:#ff8d8d!important;border-color:#7a2f2f!important}
+
+.roster-eco .roster-hero,.roster-eco .roster-form-panel{background:linear-gradient(135deg,#031716,#061018)}
+.roster-eco .roster-card{box-shadow:inset 0 0 35px rgba(0,216,198,.03)}
+.roster-bandit .roster-hero,.roster-bandit .roster-form-panel{background:linear-gradient(135deg,#171005,#090806)}
+.roster-bandit .roster-card{box-shadow:inset 0 0 35px rgba(215,169,40,.03)}
+.roster-freedom .roster-hero,.roster-freedom .roster-form-panel{background:linear-gradient(135deg,#071707,#06100a)}
+.roster-freedom .roster-card{box-shadow:inset 0 0 35px rgba(117,210,47,.03)}
+
+@media(max-width:900px){
+  .roster-grid-three,.roster-relations-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:640px){
+  .roster-grid-three,.roster-relations-grid{grid-template-columns:1fr}
+  .roster-card{grid-template-columns:1fr}
+  .roster-photo{width:100%;height:210px}
+}
