@@ -135,7 +135,7 @@
                     role: document.getElementById('newUserRole').value,
                     factionId: document.getElementById('newUserFaction').value ? parseInt(document.getElementById('newUserFaction').value) : null
                 };
-                await api('/api/users', { method: 'POST', body: JSON.stringify(body) });
+                await api('/api/users', { method: 'POST', body });
                 showSuccess('Usuário criado com sucesso.');
                 document.getElementById('createUserForm').classList.add('hidden');
                 await loadUserList();
@@ -162,7 +162,7 @@
 
         async function toggleUserActive(id, currentActive) {
             try {
-                await api(`/api/users/${id}`, { method: 'PUT', body: JSON.stringify({ active: currentActive ? 0 : 1 }) });
+                await api(`/api/users/${id}`, { method: 'PUT', body: { active: currentActive ? 0 : 1 } });
                 showSuccess('Status alterado.');
                 await loadUserList();
                 await loadOverview();
