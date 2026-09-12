@@ -1179,8 +1179,11 @@ app.put('/api/itens/:id', auth, requireCapability('items:manage'), upload.single
     } catch (e) { next(e); }
 });
 app.delete('/api/itens/:id', auth, requireSuperAdminDelete, requireCapability('items:manage'), async (req, res) => {
+    const row = await dbGet(`SELECT id,nome FROM itens WHERE id=?`, [req.params.id]);
+    if (!row) return res.status(404).json({ error:'Item não encontrado.' });
     await dbRun(`DELETE FROM itens WHERE id=?`, [req.params.id]);
-    res.json({ success: true });
+    await auditLog({userId:req.user.id,factionId:getFactionScope(req),action:'DELETE_ITEM',entity:'itens',entityId:req.params.id,metadata:{nome:row.nome}});
+    res.json({ success: true, deleted:true });
 });
 app.post('/api/itens/importar', auth, requireCapability('items:manage'), async (req, res, next) => {
     try {
@@ -1233,8 +1236,11 @@ app.put('/api/missoes/:id', auth, requireCapability('missions:manage'), upload.s
     } catch(e) { next(e); }
 });
 app.delete('/api/missoes/:id', auth, requireSuperAdminDelete, requireCapability('missions:manage'), async (req, res) => {
+    const row = await dbGet(`SELECT id,titulo FROM missoes WHERE id=?`, [req.params.id]);
+    if (!row) return res.status(404).json({ error:'Missão não encontrada.' });
     await dbRun(`DELETE FROM missoes WHERE id=?`, [req.params.id]);
-    res.json({ success: true });
+    await auditLog({userId:req.user.id,factionId:getFactionScope(req),action:'DELETE_MISSION',entity:'missoes',entityId:req.params.id,metadata:{titulo:row.titulo}});
+    res.json({ success: true, deleted:true });
 });
 app.put('/api/missoes/:id/atribuir', auth, requireCapability('missions:manage'), async (req, res) => {
     await dbRun(`UPDATE missoes SET stalker_id=?, status='em andamento' WHERE id=?`, [req.body.stalker_id, req.params.id]);
@@ -1289,24 +1295,51 @@ app.get('/api/relatorios', auth, requireCapability('reports:read'), async (req, 
     const fId = getFactionScope(req);
     res.json(await dbAll(`SELECT * FROM relatorios ${fId ? 'WHERE faction_id = ?' : ''}`, fId ? [fId] : []));
 });
-app.post('/api/relatorios', auth, requireCapability('reports:manage'), async (req, res, next) => {
+app.post('/api/relatorios', auth, requireCapability('reports:manage'), upload.single('foto'), async (req, res, next) => {
     try {
         const fId = getFactionScope(req) || 2;
-        await dbRun(`INSERT INTO relatorios (numero, autor, membros, objetivo, col1, col2, col3, faction_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [req.body.numero, req.body.autor, req.body.membros, req.body.objetivo, req.body.col1, req.body.col2, req.body.col3, fId]);
-        res.json({ success: true });
+        const foto = req.file ? `/uploads/${req.file.filename}` : '';
+        const result = await dbRun(
+            `INSERT INTO relatorios
+             (numero, autor, membros, objetivo, col1, col2, col3, faction_id, foto)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [req.body.numero, req.body.autor, req.body.membros, req.body.objetivo,
+             req.body.col1, req.body.col2, req.body.col3, fId, foto]
+        );
+        await auditLog({
+            userId:req.user.id,
+            factionId:fId,
+            action:'CREATE_REPORT',
+            entity:'relatorios',
+            entityId:result.lastID
+        });
+        res.status(201).json({ success:true, id:result.lastID });
     } catch (e) { next(e); }
 });
-app.put('/api/relatorios/:id', auth, requireCapability('reports:manage'), async (req, res, next) => {
+app.put('/api/relatorios/:id', auth, requireCapability('reports:manage'), upload.single('foto'), async (req, res, next) => {
     try {
-        await dbRun(`UPDATE relatorios SET numero=?, autor=?, membros=?, objetivo=?, col1=?, col2=?, col3=?, editado_por=? WHERE id=?`,
-            [req.body.numero, req.body.autor, req.body.membros, req.body.objetivo, req.body.col1, req.body.col2, req.body.col3, req.user.name, req.params.id]);
-        res.json({ success: true });
+        const values = [
+            req.body.numero, req.body.autor, req.body.membros, req.body.objetivo,
+            req.body.col1, req.body.col2, req.body.col3, req.user.name
+        ];
+        let sql = `UPDATE relatorios
+                   SET numero=?, autor=?, membros=?, objetivo=?, col1=?, col2=?, col3=?, editado_por=?`;
+        if (req.file) {
+            sql += `, foto=?`;
+            values.push(`/uploads/${req.file.filename}`);
+        }
+        sql += ` WHERE id=?`;
+        values.push(req.params.id);
+        await dbRun(sql, values);
+        res.json({ success:true });
     } catch (e) { next(e); }
 });
 app.delete('/api/relatorios/:id', auth, requireSuperAdminDelete, requireCapability('reports:manage'), async (req, res) => {
+    const row = await dbGet(`SELECT id,numero,objetivo FROM relatorios WHERE id=?`, [req.params.id]);
+    if (!row) return res.status(404).json({ error:'Relatório não encontrado.' });
     await dbRun(`DELETE FROM relatorios WHERE id=?`, [req.params.id]);
-    res.json({ success: true });
+    await auditLog({userId:req.user.id,factionId:getFactionScope(req),action:'DELETE_REPORT',entity:'relatorios',entityId:req.params.id,metadata:{numero:row.numero,objetivo:row.objetivo}});
+    res.json({ success: true, deleted:true });
 });
 
 // --- CONFIG / TAXAS ---
@@ -1410,7 +1443,7 @@ app.post('/api/faction-records/:module', auth, upload.single('foto'), async (req
             extra: z.record(z.any()).optional().default({})
         });
 
-        const parsed = schema.safeParse(req.body);
+        const parsed = schema.safeParse(bodyData);
         if (!parsed.success) {
             return res.status(400).json({ error: 'Dados inválidos.', details: parsed.error.issues.map(i => i.message) });
         }

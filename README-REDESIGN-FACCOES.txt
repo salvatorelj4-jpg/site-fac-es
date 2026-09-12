@@ -55,3 +55,44 @@ FOTOS OPCIONAIS
 - Experimentos RP Ecologistas aceitam imagem opcional.
 - Cadastros de membros/stalkers continuam aceitando foto.
 - Foto nunca é obrigatória.
+
+V18 — CORREÇÃO DE DADOS ANTIGOS + ECOLOGISTAS
+
+CORRIGIDO:
+- Banco/Caixa mostra EXCLUIR para Super Admin em cada lançamento.
+- Depósito Científico agora permite criar, editar e excluir itens.
+- Itens podem receber foto opcional.
+- Relatórios Científicos agora permitem criar, editar e excluir.
+- Relatórios podem receber foto/evidência opcional.
+- Laboratório de Anomalias agora possui formulário completo de experimentos RP.
+- Experimentos: artefato/mutante, risco, status, hipótese, contexto RP, resultados, efeitos e foto opcional.
+- Apenas Super Admin visualiza/executa exclusões permanentes.
+- Exclusões de itens, missões e relatórios passam a gerar auditoria.
+- Corrigido upload de imagem em faction_records via multipart/FormData.
+
+PARA ZERAR OS DADOS ANTIGOS MOSTRADOS NAS TELAS:
+1. Pare o servidor.
+2. Faça backup (o script também cria um automaticamente).
+3. Execute em /home/container:
+   node reset-operational-data.js
+4. Aguarde "RESET OPERACIONAL COMPLETO CONCLUÍDO."
+5. Inicie o servidor.
+
+O reset zera:
+- banco/caixa
+- itens/inventários
+- missões
+- relatórios
+- pesquisas
+- experimentos RP
+- registros RP
+- stalkers
+- contratos
+- auditoria/logs
+
+Preserva:
+- usuários
+- Super Admin
+- facções
+- permissões
+- configurações
