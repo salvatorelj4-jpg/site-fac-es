@@ -209,11 +209,11 @@ function applyTheme(factionSlug) {
   }
 
   const themeColors = {
-    'ecologist': '#00bfa5',
+    'ecologists': '#00bfa5',
     'duty': '#d50000',
-    'bandit': '#6d4c41',
+    'bandits': '#6d4c41',
     'freedom': '#64dd17',
-    'mercenary': '#2962ff',
+    'mercenaries': '#2962ff',
     'clear_sky': '#00b0ff'
   };
 
@@ -267,7 +267,7 @@ function buildNav(currentPage) {
     }
     links.push({ name: 'Caixa', url: '/banco.html' });
   } else {
-    if (faction === 'ecologist') {
+    if (faction === 'ecologists') {
       links = [
         { name: 'Painel', url: '/dashboard.html' },
         { name: 'Caixa', url: '/banco.html' },
@@ -291,7 +291,7 @@ function buildNav(currentPage) {
         { name: 'Inteligência', url: '/intel.html' },
         { name: 'Logs', url: '/logs.html' }
       ];
-    } else if (faction === 'bandit') {
+    } else if (faction === 'bandits') {
       links = [
         { name: 'Painel', url: '/dashboard.html' },
         { name: 'Caixa', url: '/banco.html' },
@@ -312,7 +312,7 @@ function buildNav(currentPage) {
         { name: 'Intel', url: '/intel.html' },
         { name: 'Comunicações', url: '/comms.html' }
       ];
-    } else if (faction === 'mercenary') {
+    } else if (faction === 'mercenaries') {
       links = [
         { name: 'Painel', url: '/dashboard.html' },
         { name: 'Caixa', url: '/banco.html' },
