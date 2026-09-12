@@ -154,6 +154,43 @@ async function initDb() {
                 )
             `);
 
+            // Generic faction-specific RP records
+            await dbRun(`CREATE TABLE IF NOT EXISTS faction_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                faction_id INTEGER NOT NULL REFERENCES factions(id),
+                module_code TEXT NOT NULL,
+                title TEXT NOT NULL,
+                category TEXT,
+                status TEXT DEFAULT 'ativo',
+                location TEXT,
+                subject TEXT,
+                description TEXT,
+                extra_json TEXT DEFAULT '{}',
+                created_by INTEGER REFERENCES users(id),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
+            // Ecologist RP experiments: fictional mutant/artifact research
+            await dbRun(`CREATE TABLE IF NOT EXISTS rp_experiments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                faction_id INTEGER NOT NULL DEFAULT 2 REFERENCES factions(id),
+                title TEXT NOT NULL,
+                experiment_type TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                hypothesis TEXT,
+                risk_level TEXT DEFAULT 'baixo',
+                status TEXT DEFAULT 'planejado',
+                procedure_summary TEXT,
+                expected_result TEXT,
+                observed_result TEXT,
+                rp_effects TEXT,
+                notes TEXT,
+                created_by INTEGER REFERENCES users(id),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
             // Preserve existing tables
             const existingTables = ['stalkers', 'historico', 'itens', 'missoes', 'relatorios', 'pesquisas', 'configuracoes'];
             for (const table of existingTables) {
@@ -1045,6 +1082,282 @@ app.put('/api/config/taxas', auth, requireCapability('config:manage'), async (re
         await dbRun(`INSERT INTO configuracoes (taxa_compra, taxa_venda, faction_id) VALUES (?, ?, ?)`, [taxa_compra, taxa_venda, fId]);
     }
     res.json({ success: true });
+});
+
+// --- FACTION-SPECIFIC RP MODULES ---
+const factionModuleAccess = {
+    duty: ['operators', 'arsenal', 'intel', 'logs'],
+    ecologists: ['trade'],
+    bandits: ['business', 'territory', 'info', 'records'],
+    freedom: ['outposts', 'supplies', 'intel', 'comms'],
+    mercenaries: ['operators', 'clients', 'operations', 'intel', 'archive']
+};
+
+async function resolveFactionModuleScope(req, moduleCode) {
+    let factionId = req.user.factionId;
+
+    if (req.user.role === 'super_admin') {
+        factionId = req.query.faction_id ? parseInt(req.query.faction_id, 10) : null;
+        if (!factionId && req.body && req.body.factionId) {
+            factionId = parseInt(req.body.factionId, 10);
+        }
+        if (!factionId) {
+            return { error: 'Selecione uma facção no contexto do Super Admin antes de usar este módulo.' };
+        }
+    }
+
+    if (!factionId) return { error: 'Usuário sem facção.' };
+
+    const faction = await dbGet(`SELECT id, code, name FROM factions WHERE id = ? AND active = 1`, [factionId]);
+    if (!faction) return { error: 'Facção inválida ou desativada.' };
+
+    const allowed = factionModuleAccess[faction.code] || [];
+    if (!allowed.includes(moduleCode)) {
+        return { error: `O módulo "${moduleCode}" não pertence à facção ${faction.name}.` };
+    }
+
+    return { factionId, faction };
+}
+
+function canWriteFactionRp(req) {
+    return ['super_admin', 'faction_admin', 'commander'].includes(req.user.role);
+}
+
+app.get('/api/faction-records/:module', auth, async (req, res) => {
+    const moduleCode = String(req.params.module || '').trim().toLowerCase();
+    const scope = await resolveFactionModuleScope(req, moduleCode);
+    if (scope.error) return res.status(403).json({ error: scope.error });
+
+    const rows = await dbAll(
+        `SELECT fr.*, u.name AS created_by_name
+         FROM faction_records fr
+         LEFT JOIN users u ON u.id = fr.created_by
+         WHERE fr.faction_id = ? AND fr.module_code = ?
+         ORDER BY fr.updated_at DESC, fr.id DESC`,
+        [scope.factionId, moduleCode]
+    );
+    res.json(rows.map(r => ({ ...r, extra: JSON.parse(r.extra_json || '{}') })));
+});
+
+app.post('/api/faction-records/:module', auth, async (req, res, next) => {
+    try {
+        if (!canWriteFactionRp(req)) {
+            return res.status(403).json({ error: 'Seu cargo possui acesso somente de leitura neste módulo.' });
+        }
+
+        const moduleCode = String(req.params.module || '').trim().toLowerCase();
+        const scope = await resolveFactionModuleScope(req, moduleCode);
+        if (scope.error) return res.status(403).json({ error: scope.error });
+
+        const schema = z.object({
+            title: z.string().trim().min(2).max(120),
+            category: z.string().trim().max(80).optional().default(''),
+            status: z.string().trim().max(40).optional().default('ativo'),
+            location: z.string().trim().max(120).optional().default(''),
+            subject: z.string().trim().max(160).optional().default(''),
+            description: z.string().trim().max(5000).optional().default(''),
+            extra: z.record(z.any()).optional().default({})
+        });
+
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: 'Dados inválidos.', details: parsed.error.issues.map(i => i.message) });
+        }
+
+        const d = parsed.data;
+        const result = await dbRun(
+            `INSERT INTO faction_records
+             (faction_id, module_code, title, category, status, location, subject, description, extra_json, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [scope.factionId, moduleCode, d.title, d.category, d.status, d.location, d.subject, d.description, JSON.stringify(d.extra), req.user.id]
+        );
+
+        await auditLog({
+            userId: req.user.id,
+            factionId: scope.factionId,
+            action: 'CREATE_FACTION_RECORD',
+            entity: moduleCode,
+            entityId: result.lastID
+        });
+
+        res.status(201).json({ success: true, id: result.lastID });
+    } catch (e) { next(e); }
+});
+
+app.put('/api/faction-records/:module/:id', auth, async (req, res, next) => {
+    try {
+        if (!canWriteFactionRp(req)) {
+            return res.status(403).json({ error: 'Seu cargo possui acesso somente de leitura neste módulo.' });
+        }
+
+        const moduleCode = String(req.params.module || '').trim().toLowerCase();
+        const scope = await resolveFactionModuleScope(req, moduleCode);
+        if (scope.error) return res.status(403).json({ error: scope.error });
+
+        const current = await dbGet(
+            `SELECT id FROM faction_records WHERE id = ? AND faction_id = ? AND module_code = ?`,
+            [req.params.id, scope.factionId, moduleCode]
+        );
+        if (!current) return res.status(404).json({ error: 'Registro não encontrado nesta facção.' });
+
+        const schema = z.object({
+            title: z.string().trim().min(2).max(120),
+            category: z.string().trim().max(80).optional().default(''),
+            status: z.string().trim().max(40).optional().default('ativo'),
+            location: z.string().trim().max(120).optional().default(''),
+            subject: z.string().trim().max(160).optional().default(''),
+            description: z.string().trim().max(5000).optional().default(''),
+            extra: z.record(z.any()).optional().default({})
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json({ error: 'Dados inválidos.' });
+
+        const d = parsed.data;
+        await dbRun(
+            `UPDATE faction_records
+             SET title=?, category=?, status=?, location=?, subject=?, description=?, extra_json=?, updated_at=CURRENT_TIMESTAMP
+             WHERE id=? AND faction_id=? AND module_code=?`,
+            [d.title, d.category, d.status, d.location, d.subject, d.description, JSON.stringify(d.extra), req.params.id, scope.factionId, moduleCode]
+        );
+
+        res.json({ success: true });
+    } catch (e) { next(e); }
+});
+
+app.delete('/api/faction-records/:module/:id', auth, async (req, res, next) => {
+    try {
+        if (!canWriteFactionRp(req)) {
+            return res.status(403).json({ error: 'Seu cargo não pode excluir registros deste módulo.' });
+        }
+
+        const moduleCode = String(req.params.module || '').trim().toLowerCase();
+        const scope = await resolveFactionModuleScope(req, moduleCode);
+        if (scope.error) return res.status(403).json({ error: scope.error });
+
+        const current = await dbGet(
+            `SELECT id FROM faction_records WHERE id = ? AND faction_id = ? AND module_code = ?`,
+            [req.params.id, scope.factionId, moduleCode]
+        );
+        if (!current) return res.status(404).json({ error: 'Registro não encontrado nesta facção.' });
+
+        await dbRun(
+            `DELETE FROM faction_records WHERE id = ? AND faction_id = ? AND module_code = ?`,
+            [req.params.id, scope.factionId, moduleCode]
+        );
+        res.json({ success: true, deleted: true });
+    } catch (e) { next(e); }
+});
+
+// --- ECOLOGIST RP EXPERIMENTS ---
+// Fictional role-play records only; no real-world biological procedures are generated here.
+async function resolveEcologistScope(req) {
+    let factionId = req.user.factionId;
+    if (req.user.role === 'super_admin') {
+        factionId = req.query.faction_id ? parseInt(req.query.faction_id, 10) : 2;
+    }
+    const faction = await dbGet(`SELECT id, code, name FROM factions WHERE id = ? AND active = 1`, [factionId]);
+    if (!faction || faction.code !== 'ecologists') return null;
+    return faction;
+}
+
+app.get('/api/rp-experiments', auth, requireCapability('research:read'), async (req, res) => {
+    const faction = await resolveEcologistScope(req);
+    if (!faction) return res.status(403).json({ error: 'Experimentos RP são exclusivos dos Ecologistas.' });
+
+    const rows = await dbAll(
+        `SELECT e.*, u.name AS created_by_name
+         FROM rp_experiments e
+         LEFT JOIN users u ON u.id = e.created_by
+         WHERE e.faction_id = ?
+         ORDER BY e.updated_at DESC, e.id DESC`,
+        [faction.id]
+    );
+    res.json(rows);
+});
+
+app.post('/api/rp-experiments', auth, requireCapability('research:manage'), async (req, res, next) => {
+    try {
+        const faction = await resolveEcologistScope(req);
+        if (!faction) return res.status(403).json({ error: 'Experimentos RP são exclusivos dos Ecologistas.' });
+
+        const schema = z.object({
+            title: z.string().trim().min(3).max(120),
+            experimentType: z.enum(['mutante', 'artefato']),
+            subject: z.string().trim().min(2).max(160),
+            hypothesis: z.string().trim().max(3000).optional().default(''),
+            riskLevel: z.enum(['baixo', 'moderado', 'alto', 'critico']).optional().default('baixo'),
+            status: z.enum(['planejado', 'em_andamento', 'pausado', 'concluido', 'falhou']).optional().default('planejado'),
+            procedureSummary: z.string().trim().max(4000).optional().default(''),
+            expectedResult: z.string().trim().max(3000).optional().default(''),
+            observedResult: z.string().trim().max(3000).optional().default(''),
+            rpEffects: z.string().trim().max(3000).optional().default(''),
+            notes: z.string().trim().max(3000).optional().default('')
+        });
+
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: 'Dados do experimento inválidos.', details: parsed.error.issues.map(i => i.message) });
+        }
+        const d = parsed.data;
+
+        const result = await dbRun(
+            `INSERT INTO rp_experiments
+             (faction_id,title,experiment_type,subject,hypothesis,risk_level,status,procedure_summary,expected_result,observed_result,rp_effects,notes,created_by)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [faction.id,d.title,d.experimentType,d.subject,d.hypothesis,d.riskLevel,d.status,d.procedureSummary,d.expectedResult,d.observedResult,d.rpEffects,d.notes,req.user.id]
+        );
+        res.status(201).json({ success: true, id: result.lastID });
+    } catch (e) { next(e); }
+});
+
+app.put('/api/rp-experiments/:id', auth, requireCapability('research:manage'), async (req, res, next) => {
+    try {
+        const faction = await resolveEcologistScope(req);
+        if (!faction) return res.status(403).json({ error: 'Experimentos RP são exclusivos dos Ecologistas.' });
+
+        const current = await dbGet(`SELECT id FROM rp_experiments WHERE id=? AND faction_id=?`, [req.params.id, faction.id]);
+        if (!current) return res.status(404).json({ error: 'Experimento não encontrado.' });
+
+        const schema = z.object({
+            title: z.string().trim().min(3).max(120),
+            experimentType: z.enum(['mutante', 'artefato']),
+            subject: z.string().trim().min(2).max(160),
+            hypothesis: z.string().trim().max(3000).optional().default(''),
+            riskLevel: z.enum(['baixo', 'moderado', 'alto', 'critico']).optional().default('baixo'),
+            status: z.enum(['planejado', 'em_andamento', 'pausado', 'concluido', 'falhou']).optional().default('planejado'),
+            procedureSummary: z.string().trim().max(4000).optional().default(''),
+            expectedResult: z.string().trim().max(3000).optional().default(''),
+            observedResult: z.string().trim().max(3000).optional().default(''),
+            rpEffects: z.string().trim().max(3000).optional().default(''),
+            notes: z.string().trim().max(3000).optional().default('')
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json({ error: 'Dados inválidos.' });
+        const d = parsed.data;
+
+        await dbRun(
+            `UPDATE rp_experiments SET
+             title=?,experiment_type=?,subject=?,hypothesis=?,risk_level=?,status=?,procedure_summary=?,
+             expected_result=?,observed_result=?,rp_effects=?,notes=?,updated_at=CURRENT_TIMESTAMP
+             WHERE id=? AND faction_id=?`,
+            [d.title,d.experimentType,d.subject,d.hypothesis,d.riskLevel,d.status,d.procedureSummary,
+             d.expectedResult,d.observedResult,d.rpEffects,d.notes,req.params.id,faction.id]
+        );
+        res.json({ success: true });
+    } catch (e) { next(e); }
+});
+
+app.delete('/api/rp-experiments/:id', auth, requireCapability('research:manage'), async (req, res, next) => {
+    try {
+        const faction = await resolveEcologistScope(req);
+        if (!faction) return res.status(403).json({ error: 'Experimentos RP são exclusivos dos Ecologistas.' });
+
+        const current = await dbGet(`SELECT id FROM rp_experiments WHERE id=? AND faction_id=?`, [req.params.id, faction.id]);
+        if (!current) return res.status(404).json({ error: 'Experimento não encontrado.' });
+
+        await dbRun(`DELETE FROM rp_experiments WHERE id=? AND faction_id=?`, [req.params.id, faction.id]);
+        res.json({ success: true, deleted: true });
+    } catch (e) { next(e); }
 });
 
 // --- ADMIN / DASHBOARD STATS ---
