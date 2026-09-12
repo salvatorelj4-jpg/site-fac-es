@@ -1,1 +1,41 @@
-<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="special-factions.css"><title>Relatórios Científicos</title></head><body><nav id="mainNav"></nav><main class="sf-wrap"><div class="sf-hero" id="sfCode" data-code=""><div class="sf-kicker"></div><h1 class="sf-title">RELATÓRIOS CIENTÍFICOS</h1><p class="sf-sub">Resultados de campo, observações e documentação do bunker</p></div><div id="reportList" class="sf-grid"></div></main><script>window.SF_PAGE={faction:'ecologists'};</script><script src="app.js"></script><script src="special-factions.js"></script><script>sfEcoReports();</script></body></html>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css"><link rel="stylesheet" href="special-factions.css">
+<title>Relatórios Científicos</title>
+</head>
+<body>
+<nav id="mainNav"></nav>
+<main class="sf-wrap">
+<section class="sf-hero" data-code="SSP-99 // REPORTS">
+<div class="sf-kicker">ARQUIVO CIENTÍFICO</div>
+<h1 class="sf-title">RELATÓRIOS CIENTÍFICOS</h1>
+<p class="sf-sub">Resultados de campo, observações e documentação do bunker.</p>
+<button id="reportNewBtn" class="btn-success w-auto" style="margin-top:14px" onclick="sfEcoOpenReport()">+ NOVO RELATÓRIO</button>
+</section>
+
+<section id="reportForm" class="sf-panel hidden">
+<h2 id="reportFormTitle" class="sf-title" style="font-size:20px">NOVO RELATÓRIO</h2>
+<div class="sf-form">
+<div><label>NÚMERO / CÓDIGO</label><input id="pNumber" placeholder="REL-001"></div>
+<div><label>AUTOR</label><input id="pAuthor"></div>
+<div class="full"><label>EQUIPE</label><input id="pMembers"></div>
+<div class="full"><label>TÍTULO / OBJETIVO</label><input id="pObjective"></div>
+<div class="full"><label>RELATO / OBSERVAÇÕES</label><textarea id="pCol1" rows="5"></textarea></div>
+<div><label>RESULTADOS</label><textarea id="pCol2" rows="4"></textarea></div>
+<div><label>CONCLUSÃO</label><textarea id="pCol3" rows="4"></textarea></div>
+<div class="full"><label>FOTO / EVIDÊNCIA (OPCIONAL)</label><input id="pPhoto" type="file" accept="image/*"><div id="pCurrentPhoto"></div></div>
+</div>
+<div class="sf-actions">
+<button class="btn-success" onclick="sfEcoSaveReport()">SALVAR RELATÓRIO</button>
+<button class="btn-secondary" onclick="sfEcoCloseReport()">CANCELAR</button>
+</div>
+</section>
+
+<div id="reportList" class="sf-grid"></div>
+</main>
+<script>window.SF_PAGE={faction:'ecologists'};</script>
+<script src="app.js"></script><script src="special-factions.js"></script>
+<script>sfEcoReports();</script>
+</body></html>

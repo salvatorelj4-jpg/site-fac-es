@@ -1,1 +1,45 @@
-<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="special-factions.css"><title>Depósito Científico</title></head><body><nav id="mainNav"></nav><main class="sf-wrap"><div class="sf-hero" id="sfCode" data-code=""><div class="sf-kicker"></div><h1 class="sf-title">DEPÓSITO CIENTÍFICO</h1><p class="sf-sub">Equipamentos, medicamentos, amostras e material de campo</p></div><div class="sf-stats"><div class="sf-stat"><b id="invCount">0</b><span>UNIDADES EM DEPÓSITO</span></div><div class="sf-stat"><b>SSP</b><span>CONTROLE DE MATERIAL</span></div></div><div id="invList" class="sf-grid"></div></main><script>window.SF_PAGE={faction:'ecologists'};</script><script src="app.js"></script><script src="special-factions.js"></script><script>sfEcoInventory();</script></body></html>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css"><link rel="stylesheet" href="special-factions.css">
+<title>Depósito Científico</title>
+</head>
+<body>
+<nav id="mainNav"></nav>
+<main class="sf-wrap">
+<section class="sf-hero" data-code="SSP-99 // STORAGE">
+<div class="sf-kicker">CONTROLE DE MATERIAL</div>
+<h1 class="sf-title">DEPÓSITO CIENTÍFICO</h1>
+<p class="sf-sub">Equipamentos, medicamentos, amostras e material de campo.</p>
+<button id="invNewBtn" class="btn-success w-auto" style="margin-top:14px" onclick="sfEcoOpenItem()">+ NOVO ITEM</button>
+</section>
+
+<div class="sf-stats">
+<div class="sf-stat"><b id="invCount">0</b><span>UNIDADES EM DEPÓSITO</span></div>
+<div class="sf-stat"><b id="invTypes">0</b><span>TIPOS CADASTRADOS</span></div>
+</div>
+
+<section id="invForm" class="sf-panel hidden">
+<h2 id="invFormTitle" class="sf-title" style="font-size:20px">NOVO ITEM</h2>
+<div class="sf-form">
+<div class="full"><label>NOME / IDENTIFICAÇÃO</label><input id="iName"></div>
+<div><label>TIPO / CATEGORIA</label><input id="iType" placeholder="Equipamento, medicamento, amostra..."></div>
+<div><label>QUANTIDADE</label><input id="iQty" type="number" min="0" value="1"></div>
+<div><label>VALOR-BASE (RU)</label><input id="iValue" type="number" min="0" step="0.01" value="0"></div>
+<div><label>FOTO / IMAGEM (OPCIONAL)</label><input id="iPhoto" type="file" accept="image/*"></div>
+<div id="iCurrentPhoto"></div>
+</div>
+<div class="sf-actions">
+<button class="btn-success" onclick="sfEcoSaveItem()">SALVAR ITEM</button>
+<button class="btn-secondary" onclick="sfEcoCloseItem()">CANCELAR</button>
+</div>
+</section>
+
+<div class="sf-toolbar"><input id="invSearch" placeholder="Buscar item..." oninput="sfEcoRenderInventory()"></div>
+<div id="invList" class="sf-grid"></div>
+</main>
+<script>window.SF_PAGE={faction:'ecologists'};</script>
+<script src="app.js"></script><script src="special-factions.js"></script>
+<script>sfEcoInventory();</script>
+</body></html>

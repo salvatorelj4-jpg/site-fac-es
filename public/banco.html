@@ -184,6 +184,7 @@
                                 </div>
                                 <div class="t-amount ${tClass}">
                                     ${sign}${t.amount.toFixed(2)} RU
+                                    ${getUser()?.role==='super_admin'?`<button class="btn-danger w-auto" style="display:block;margin-top:7px" onclick="deleteBankTransaction(${t.id})">EXCLUIR</button>`:''}
                                 </div>
                             </div>
                         `;
@@ -193,6 +194,14 @@
                 console.error(error);
                 document.getElementById('transaction-list').innerHTML = '<p style="color: var(--danger);">Erro ao carregar os dados.</p>';
             }
+        }
+
+        async function deleteBankTransaction(id) {
+            if (getUser()?.role !== 'super_admin') return showError('Somente o Super Admin pode excluir lançamentos.');
+            if (!confirm('Excluir permanentemente este lançamento?')) return;
+            await api(`/api/bank/${id}`, { method: 'DELETE' });
+            showSuccess('Lançamento excluído.');
+            loadBankData();
         }
 
         async function submitTransaction(e) {

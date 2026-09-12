@@ -98,9 +98,135 @@ async function sfDutySaveStalker(){const fd=new FormData();fd.append('nome', dut
 async function sfDutyDeleteStalker(id){if(!sfCanDelete())return showError('Somente o Super Admin pode excluir registros.');if(!confirm('Excluir este agente do efetivo da Duty?')) return;await api(`/api/stalkers/${id}`,{method:'DELETE'});showSuccess('Registro excluído do efetivo.');await sfDutyLoadStalkers()}
 
 async function sfEcoStalkers(){sfInit();const rows=await api('/api/stalkers')||[];stalkerList.innerHTML=rows.map(s=>`<div class="sf-card">${s.foto?`<img src="${sfEsc(s.foto)}" style="width:90px;height:110px;object-fit:cover;float:right;border:1px solid var(--line)">`:''}<span class="sf-tag">REP ${Number(s.reputacao||0)}</span><h3>${sfEsc(s.codinome||s.nome)}</h3><p><b>Nome:</b> ${sfEsc(s.nome)}</p><p><b>Facção:</b> ${sfEsc(s.faccao||'-')}</p><p><b>Área:</b> ${sfEsc(s.area_atuacao||'-')}</p><div class="sf-meta">Rumores: ${sfEsc(s.rumores||'Nenhum')}</div></div>`).join('')||'<div class="sf-empty">Nenhum stalker catalogado.</div>'}
-async function sfEcoInventory(){sfInit();const rows=await api('/api/itens')||[];document.getElementById('invCount').textContent=rows.reduce((a,x)=>a+Number(x.quantidade||0),0);invList.innerHTML=rows.map(i=>`<div class="sf-card"><span class="sf-tag">${sfEsc(i.tipo)}</span><h3>${sfEsc(i.nome)}</h3><p><b>Quantidade:</b> ${Number(i.quantidade||0)}</p><p><b>Valor-base:</b> ${sfMoney(i.valor_base)}</p></div>`).join('')||'<div class="sf-empty">Depósito vazio.</div>'}
-async function sfEcoResearch(){sfInit();const rows=await api('/api/rp-experiments')||[];window._research=rows;document.getElementById('rPlan').textContent=rows.filter(x=>x.status==='planejado').length;document.getElementById('rRun').textContent=rows.filter(x=>x.status==='em_andamento').length;document.getElementById('rDone').textContent=rows.filter(x=>x.status==='concluido').length;researchList.innerHTML=rows.map(e=>`<div class="sf-card"><span class="sf-tag">${sfEsc(e.experiment_type)}</span><span class="sf-tag">RISCO ${sfEsc(e.risk_level)}</span><h3>${sfEsc(e.title)}</h3><p><b>Amostra:</b> ${sfEsc(e.subject)}</p><p><b>Hipótese:</b> ${sfEsc(e.hypothesis||'-')}</p><p><b>Efeito RP:</b> ${sfEsc(e.rp_effects||'-')}</p><div class="sf-meta">${sfEsc(e.status)} • ${sfEsc(e.created_by_name||'')}</div></div>`).join('')||'<div class="sf-empty">Nenhum experimento cadastrado.</div>'}
-async function sfEcoReports(){sfInit();const rows=await api('/api/relatorios')||[];reportList.innerHTML=rows.map(r=>`<div class="sf-card"><span class="sf-tag">REL ${sfEsc(r.numero||r.id)}</span><h3>${sfEsc(r.objetivo||'Relatório científico')}</h3><p><b>Autor:</b> ${sfEsc(r.autor||'-')}</p><p><b>Equipe:</b> ${sfEsc(r.membros||'-')}</p><div class="sf-meta">${sfEsc(r.col1||'')} ${sfEsc(r.col2||'')} ${sfEsc(r.col3||'')}</div></div>`).join('')||'<div class="sf-empty">Nenhum relatório científico.</div>'}
+let ecoItems=[], ecoItemEdit=null;
+async function sfEcoInventory(){
+ sfInit();
+ if(!sfCanWrite())invNewBtn.style.display='none';
+ await sfEcoLoadInventory();
+}
+async function sfEcoLoadInventory(){
+ ecoItems=await api('/api/itens')||[];
+ invCount.textContent=ecoItems.reduce((a,x)=>a+Number(x.quantidade||1),0);
+ invTypes.textContent=new Set(ecoItems.map(x=>x.tipo||x.categoria||'Item')).size;
+ sfEcoRenderInventory();
+}
+function sfEcoRenderInventory(){
+ const q=(invSearch?.value||'').toLowerCase();
+ const rows=ecoItems.filter(i=>!q||[i.nome,i.tipo,i.categoria].join(' ').toLowerCase().includes(q));
+ invList.innerHTML=rows.map(i=>`<div class="sf-card">
+ ${i.foto?`<img src="${sfEsc(i.foto)}" style="width:100%;height:160px;object-fit:cover;border:1px solid var(--line);margin-bottom:10px">`:''}
+ <span class="sf-tag">${sfEsc(i.tipo||i.categoria||'ITEM')}</span>
+ <h3>${sfEsc(i.nome)}</h3>
+ <p><b>Quantidade:</b> ${Number(i.quantidade||1)}</p>
+ <p><b>Valor-base:</b> ${sfMoney(i.valor_base??i.preco_base??0)}</p>
+ ${sfCanWrite()?`<div class="sf-actions">
+ <button class="btn-secondary w-auto" onclick='sfEcoOpenItem(${JSON.stringify(i).replace(/'/g,"&#39;")})'>EDITAR</button>
+ ${sfCanDelete()?`<button class="btn-danger w-auto" onclick="sfEcoDeleteItem(${i.id})">EXCLUIR</button>`:''}
+ </div>`:''}</div>`).join('')||'<div class="sf-empty">Depósito vazio.</div>';
+}
+function sfEcoOpenItem(i=null){
+ ecoItemEdit=i?.id||null;
+ invFormTitle.textContent=ecoItemEdit?'EDITAR ITEM':'NOVO ITEM';
+ iName.value=i?.nome||'';iType.value=i?.tipo||i?.categoria||'';iQty.value=i?.quantidade||1;iValue.value=i?.valor_base??i?.preco_base??0;
+ iPhoto.value='';iCurrentPhoto.innerHTML=i?.foto?`<img src="${sfEsc(i.foto)}" style="max-width:180px;max-height:130px;object-fit:cover;border:1px solid var(--line)">`:'';
+ invForm.classList.remove('hidden');
+}
+function sfEcoCloseItem(){ecoItemEdit=null;invForm.classList.add('hidden')}
+async function sfEcoSaveItem(){
+ if(!iName.value.trim())return showError('Informe o nome do item.');
+ const fd=new FormData();fd.append('nome',iName.value.trim());fd.append('tipo',iType.value.trim()||'Item');fd.append('quantidade',Number(iQty.value||1));fd.append('valor_base',Number(iValue.value||0));
+ if(iPhoto.files[0])fd.append('foto',iPhoto.files[0]);
+ await apiForm(ecoItemEdit?`/api/itens/${ecoItemEdit}`:'/api/itens',fd,ecoItemEdit?'PUT':'POST');
+ showSuccess(ecoItemEdit?'Item atualizado.':'Item cadastrado.');sfEcoCloseItem();sfEcoLoadInventory();
+}
+async function sfEcoDeleteItem(id){
+ if(!sfCanDelete())return showError('Somente o Super Admin pode excluir itens.');
+ if(!confirm('Excluir permanentemente este item?'))return;
+ await api(`/api/itens/${id}`,{method:'DELETE'});showSuccess('Item excluído.');sfEcoLoadInventory();
+}
+let ecoResearchRows=[], ecoResearchEdit=null;
+async function sfEcoResearch(){
+ sfInit();
+ if(!sfCanWrite())researchNewBtn.style.display='none';
+ await sfEcoLoadResearch();
+}
+async function sfEcoLoadResearch(){
+ ecoResearchRows=await api('/api/rp-experiments')||[];
+ rPlan.textContent=ecoResearchRows.filter(x=>x.status==='planejado').length;
+ rRun.textContent=ecoResearchRows.filter(x=>x.status==='em_andamento').length;
+ rDone.textContent=ecoResearchRows.filter(x=>x.status==='concluido').length;
+ rHigh.textContent=ecoResearchRows.filter(x=>['alto','critico'].includes(x.risk_level)).length;
+ researchList.innerHTML=ecoResearchRows.map(e=>`<div class="sf-card">
+ ${e.foto?`<img src="${sfEsc(e.foto)}" style="width:100%;height:180px;object-fit:cover;border:1px solid var(--line);margin-bottom:10px">`:''}
+ <span class="sf-tag">${sfEsc(e.experiment_type)}</span><span class="sf-tag">RISCO ${sfEsc(e.risk_level)}</span><span class="sf-tag">${sfEsc(e.status)}</span>
+ <h3>${sfEsc(e.title)}</h3>
+ <p><b>Amostra:</b> ${sfEsc(e.subject)}</p>
+ ${e.hypothesis?`<p><b>Hipótese:</b> ${sfEsc(e.hypothesis)}</p>`:''}
+ ${e.rp_effects?`<p><b>Efeito RP:</b> ${sfEsc(e.rp_effects)}</p>`:''}
+ <div class="sf-meta">Responsável: ${sfEsc(e.created_by_name||'Sistema')} • ${sfDate(e.updated_at)}</div>
+ ${sfCanWrite()?`<div class="sf-actions"><button class="btn-secondary w-auto" onclick='sfEcoOpenResearch(${JSON.stringify(e).replace(/'/g,"&#39;")})'>EDITAR</button>${sfCanDelete()?`<button class="btn-danger w-auto" onclick="sfEcoDeleteResearch(${e.id})">EXCLUIR</button>`:''}</div>`:''}
+ </div>`).join('')||'<div class="sf-empty">Nenhum experimento cadastrado.</div>';
+}
+function sfEcoOpenResearch(e=null){
+ ecoResearchEdit=e?.id||null;researchFormTitle.textContent=ecoResearchEdit?'EDITAR EXPERIMENTO':'NOVO EXPERIMENTO';
+ xTitle.value=e?.title||'';xType.value=e?.experiment_type||'artefato';xSubject.value=e?.subject||'';xRisk.value=e?.risk_level||'baixo';xStatus.value=e?.status||'planejado';
+ xHypothesis.value=e?.hypothesis||'';xProcedure.value=e?.procedure_summary||'';xExpected.value=e?.expected_result||'';xObserved.value=e?.observed_result||'';xEffects.value=e?.rp_effects||'';xNotes.value=e?.notes||'';
+ xPhoto.value='';xCurrentPhoto.innerHTML=e?.foto?`<img src="${sfEsc(e.foto)}" style="max-width:200px;max-height:150px;object-fit:cover;border:1px solid var(--line);margin-top:8px">`:'';
+ researchForm.classList.remove('hidden');
+}
+function sfEcoCloseResearch(){ecoResearchEdit=null;researchForm.classList.add('hidden')}
+async function sfEcoSaveResearch(){
+ if(xTitle.value.trim().length<3||xSubject.value.trim().length<2)return showError('Informe título e amostra.');
+ const fd=new FormData();
+ fd.append('title',xTitle.value.trim());fd.append('experimentType',xType.value);fd.append('subject',xSubject.value.trim());fd.append('hypothesis',xHypothesis.value.trim());fd.append('riskLevel',xRisk.value);fd.append('status',xStatus.value);
+ fd.append('procedureSummary',xProcedure.value.trim());fd.append('expectedResult',xExpected.value.trim());fd.append('observedResult',xObserved.value.trim());fd.append('rpEffects',xEffects.value.trim());fd.append('notes',xNotes.value.trim());
+ if(xPhoto.files[0])fd.append('foto',xPhoto.files[0]);
+ await apiForm(ecoResearchEdit?`/api/rp-experiments/${ecoResearchEdit}`:'/api/rp-experiments',fd,ecoResearchEdit?'PUT':'POST');
+ showSuccess(ecoResearchEdit?'Experimento atualizado.':'Experimento cadastrado.');sfEcoCloseResearch();sfEcoLoadResearch();
+}
+async function sfEcoDeleteResearch(id){
+ if(!sfCanDelete())return showError('Somente o Super Admin pode excluir experimentos.');
+ if(!confirm('Excluir permanentemente este experimento?'))return;
+ await api(`/api/rp-experiments/${id}`,{method:'DELETE'});showSuccess('Experimento excluído.');sfEcoLoadResearch();
+}
+let ecoReports=[], ecoReportEdit=null;
+async function sfEcoReports(){
+ sfInit();
+ if(!sfCanWrite())reportNewBtn.style.display='none';
+ await sfEcoLoadReports();
+}
+async function sfEcoLoadReports(){
+ ecoReports=await api('/api/relatorios')||[];
+ reportList.innerHTML=ecoReports.map(r=>`<div class="sf-card">
+ ${r.foto?`<img src="${sfEsc(r.foto)}" style="width:100%;height:180px;object-fit:cover;border:1px solid var(--line);margin-bottom:10px">`:''}
+ <span class="sf-tag">${sfEsc(r.numero||('REL-'+r.id))}</span>
+ <h3>${sfEsc(r.objetivo||'Relatório científico')}</h3>
+ <p><b>Autor:</b> ${sfEsc(r.autor||'-')}</p><p><b>Equipe:</b> ${sfEsc(r.membros||'-')}</p>
+ ${r.col1?`<p>${sfEsc(r.col1)}</p>`:''}
+ ${r.col2?`<p><b>Resultados:</b> ${sfEsc(r.col2)}</p>`:''}
+ ${r.col3?`<p><b>Conclusão:</b> ${sfEsc(r.col3)}</p>`:''}
+ ${sfCanWrite()?`<div class="sf-actions"><button class="btn-secondary w-auto" onclick='sfEcoOpenReport(${JSON.stringify(r).replace(/'/g,"&#39;")})'>EDITAR</button>${sfCanDelete()?`<button class="btn-danger w-auto" onclick="sfEcoDeleteReport(${r.id})">EXCLUIR</button>`:''}</div>`:''}
+ </div>`).join('')||'<div class="sf-empty">Nenhum relatório científico.</div>';
+}
+function sfEcoOpenReport(r=null){
+ ecoReportEdit=r?.id||null;reportFormTitle.textContent=ecoReportEdit?'EDITAR RELATÓRIO':'NOVO RELATÓRIO';
+ pNumber.value=r?.numero||'';pAuthor.value=r?.autor||'';pMembers.value=r?.membros||'';pObjective.value=r?.objetivo||'';pCol1.value=r?.col1||'';pCol2.value=r?.col2||'';pCol3.value=r?.col3||'';
+ pPhoto.value='';pCurrentPhoto.innerHTML=r?.foto?`<img src="${sfEsc(r.foto)}" style="max-width:200px;max-height:150px;object-fit:cover;border:1px solid var(--line);margin-top:8px">`:'';
+ reportForm.classList.remove('hidden');
+}
+function sfEcoCloseReport(){ecoReportEdit=null;reportForm.classList.add('hidden')}
+async function sfEcoSaveReport(){
+ if(!pObjective.value.trim())return showError('Informe o título/objetivo do relatório.');
+ const fd=new FormData();fd.append('numero',pNumber.value.trim());fd.append('autor',pAuthor.value.trim());fd.append('membros',pMembers.value.trim());fd.append('objetivo',pObjective.value.trim());fd.append('col1',pCol1.value.trim());fd.append('col2',pCol2.value.trim());fd.append('col3',pCol3.value.trim());
+ if(pPhoto.files[0])fd.append('foto',pPhoto.files[0]);
+ await apiForm(ecoReportEdit?`/api/relatorios/${ecoReportEdit}`:'/api/relatorios',fd,ecoReportEdit?'PUT':'POST');
+ showSuccess(ecoReportEdit?'Relatório atualizado.':'Relatório criado.');sfEcoCloseReport();sfEcoLoadReports();
+}
+async function sfEcoDeleteReport(id){
+ if(!sfCanDelete())return showError('Somente o Super Admin pode excluir relatórios.');
+ if(!confirm('Excluir permanentemente este relatório?'))return;
+ await api(`/api/relatorios/${id}`,{method:'DELETE'});showSuccess('Relatório excluído.');sfEcoLoadReports();
+}
 async function sfEcoHistory(){sfInit();const stalkers=await api('/api/stalkers')||[];historyList.innerHTML=stalkers.map(s=>`<div class="sf-card"><h3>${sfEsc(s.codinome||s.nome)}</h3><div class="sf-meta">Último check-in: ${sfDate(s.ultimo_checkin)} • Presenças: ${Number(s.presencas||0)}</div><p>Reputação científica: <b>${Number(s.reputacao||0)}</b></p></div>`).join('')||'<div class="sf-empty">Sem histórico de campo.</div>'}
 async function sfEcoBlacklist(){sfInit();const rows=(await api('/api/stalkers')||[]).filter(s=>Number(s.status_lista_negra)===1);blackList.innerHTML=rows.map(s=>`<div class="sf-card" style="border-color:#7f1d1d"><span class="sf-tag" style="color:#f87171">RISCO BIOLÓGICO / SEGURANÇA</span><h3>${sfEsc(s.codinome||s.nome)}</h3><p>${sfEsc(s.motivo_lista_negra||'Sem justificativa')}</p><div class="sf-meta">Área: ${sfEsc(s.area_atuacao||'-')}</div></div>`).join('')||'<div class="sf-empty">Nenhum indivíduo em restrição.</div>'}
 

@@ -1,1 +1,56 @@
-<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="special-factions.css"><title>Laboratório Ecologista</title></head><body><nav id="mainNav"></nav><main class="sf-wrap"><div class="sf-hero" id="sfCode" data-code=""><div class="sf-kicker"></div><h1 class="sf-title">LABORATÓRIO DE ANOMALIAS</h1><p class="sf-sub">Experimentos RP com artefatos, mutantes e fenômenos da Zona</p></div><div class="sf-stats"><div class="sf-stat"><b id="rPlan">0</b><span>PLANEJADOS</span></div><div class="sf-stat"><b id="rRun">0</b><span>EM ANDAMENTO</span></div><div class="sf-stat"><b id="rDone">0</b><span>CONCLUÍDOS</span></div><div class="sf-stat"><b>☢</b><span>PROTOCOLO RP</span></div></div><div id="researchList" class="sf-grid"></div></main><script>window.SF_PAGE={faction:'ecologists'};</script><script src="app.js"></script><script src="special-factions.js"></script><script>sfEcoResearch();</script></body></html>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="special-factions.css">
+<title>Laboratório de Anomalias</title>
+</head>
+<body>
+<nav id="mainNav"></nav>
+<main class="sf-wrap">
+<section class="sf-hero" data-code="SSP-99 // LAB">
+<div class="sf-kicker">BUNKER CIENTÍFICO / PROTOCOLO RP</div>
+<h1 class="sf-title">LABORATÓRIO DE ANOMALIAS</h1>
+<p class="sf-sub">Experimentos ficcionais de RP com artefatos, mutantes e fenômenos da Zona.</p>
+<button id="researchNewBtn" class="btn-success w-auto" style="margin-top:14px" onclick="sfEcoOpenResearch()">+ NOVO EXPERIMENTO</button>
+</section>
+
+<div class="sf-stats">
+<div class="sf-stat"><b id="rPlan">0</b><span>PLANEJADOS</span></div>
+<div class="sf-stat"><b id="rRun">0</b><span>EM ANDAMENTO</span></div>
+<div class="sf-stat"><b id="rDone">0</b><span>CONCLUÍDOS</span></div>
+<div class="sf-stat"><b id="rHigh">0</b><span>RISCO ALTO / CRÍTICO</span></div>
+</div>
+
+<section id="researchForm" class="sf-panel hidden">
+<h2 id="researchFormTitle" class="sf-title" style="font-size:20px">NOVO EXPERIMENTO</h2>
+<div class="sf-form">
+<div class="full"><label>TÍTULO DO EXPERIMENTO</label><input id="xTitle"></div>
+<div><label>TIPO</label><select id="xType"><option value="artefato">ARTEFATO</option><option value="mutante">MUTANTE</option></select></div>
+<div><label>AMOSTRA / OBJETO DE ESTUDO</label><input id="xSubject"></div>
+<div><label>RISCO</label><select id="xRisk"><option value="baixo">BAIXO</option><option value="moderado">MODERADO</option><option value="alto">ALTO</option><option value="critico">CRÍTICO</option></select></div>
+<div><label>STATUS</label><select id="xStatus"><option value="planejado">PLANEJADO</option><option value="em_andamento">EM ANDAMENTO</option><option value="pausado">PAUSADO</option><option value="concluido">CONCLUÍDO</option><option value="falhou">FALHOU</option></select></div>
+<div class="full"><label>HIPÓTESE / OBJETIVO RP</label><textarea id="xHypothesis" rows="3"></textarea></div>
+<div class="full"><label>RESUMO DO PROCEDIMENTO FICCIONAL</label><textarea id="xProcedure" rows="3" placeholder="Descreva somente o contexto narrativo/RP do experimento."></textarea></div>
+<div><label>RESULTADO ESPERADO</label><textarea id="xExpected" rows="3"></textarea></div>
+<div><label>RESULTADO OBSERVADO</label><textarea id="xObserved" rows="3"></textarea></div>
+<div class="full"><label>EFEITOS PARA O RP</label><textarea id="xEffects" rows="3"></textarea></div>
+<div class="full"><label>NOTAS CIENTÍFICAS</label><textarea id="xNotes" rows="3"></textarea></div>
+<div class="full"><label>FOTO / IMAGEM DA AMOSTRA (OPCIONAL)</label><input id="xPhoto" type="file" accept="image/*"><div id="xCurrentPhoto"></div></div>
+</div>
+<div class="sf-actions">
+<button class="btn-success" onclick="sfEcoSaveResearch()">SALVAR EXPERIMENTO</button>
+<button class="btn-secondary" onclick="sfEcoCloseResearch()">CANCELAR</button>
+</div>
+</section>
+
+<div id="researchList" class="sf-grid"></div>
+</main>
+<script>window.SF_PAGE={faction:'ecologists'};</script>
+<script src="app.js"></script>
+<script src="special-factions.js"></script>
+<script>sfEcoResearch();</script>
+</body>
+</html>
