@@ -907,25 +907,81 @@ app.get('/api/historico/:id', auth, async (req, res) => {
 });
 
 // --- MERCENARY CONTRACTS ---
+function hasMercenaryAccess(req) {
+    return req.user.role === 'super_admin' || req.user.factionCode === 'mercenaries';
+}
+
+function isMercenaryLeader(req) {
+    return req.user.role === 'super_admin' ||
+        (req.user.factionCode === 'mercenaries' && req.user.role === 'faction_admin');
+}
+
 app.get('/api/contracts', auth, requireCapability('contracts:read'), async (req, res) => {
-    const rows = await dbAll(`SELECT * FROM mercenary_contracts`);
+    if (!hasMercenaryAccess(req)) {
+        return res.status(403).json({ error: 'Contratos são exclusivos dos Mercenários.' });
+    }
+    const rows = await dbAll(`SELECT * FROM mercenary_contracts ORDER BY created_at DESC, id DESC`);
     res.json(rows);
 });
+
 app.get('/api/contracts/:id', auth, requireCapability('contracts:read'), async (req, res) => {
+    if (!hasMercenaryAccess(req)) {
+        return res.status(403).json({ error: 'Contratos são exclusivos dos Mercenários.' });
+    }
     const row = await dbGet(`SELECT * FROM mercenary_contracts WHERE id = ?`, [req.params.id]);
+    if (!row) return res.status(404).json({ error: 'Contrato não encontrado.' });
     res.json(row);
 });
+
 app.put('/api/contracts/:id/status', auth, requireCapability('contracts:update'), async (req, res) => {
-    await dbRun(`UPDATE mercenary_contracts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [req.body.status, req.params.id]);
-    await auditLog({ userId: req.user.id, factionId: req.user.factionId, action: 'UPDATE_CONTRACT_STATUS', entityId: req.params.id, metadata: { status: req.body.status } });
+    if (!isMercenaryLeader(req)) {
+        return res.status(403).json({ error: 'Apenas o líder dos Mercenários pode alterar o status de contratos.' });
+    }
+
+    const allowed = ['NEW', 'ACCEPTED', 'SUSPENDED', 'COMPLETED', 'FAILED', 'REJECTED'];
+    const status = String(req.body.status || '').toUpperCase();
+    if (!allowed.includes(status)) {
+        return res.status(400).json({ error: 'Status de contrato inválido.' });
+    }
+
+    await dbRun(
+        `UPDATE mercenary_contracts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        [status, req.params.id]
+    );
+    await auditLog({
+        userId: req.user.id,
+        factionId: req.user.factionId,
+        action: 'UPDATE_CONTRACT_STATUS',
+        entity: 'mercenary_contracts',
+        entityId: req.params.id,
+        metadata: { status }
+    });
     res.json({ success: true });
 });
+
 app.post('/api/contracts/:id/notes', auth, requireCapability('contracts:update'), async (req, res) => {
-    await dbRun(`INSERT INTO contract_notes (contract_id, user_id, message) VALUES (?, ?, ?)`, [req.params.id, req.user.id, req.body.message]);
+    if (!hasMercenaryAccess(req)) {
+        return res.status(403).json({ error: 'Contratos são exclusivos dos Mercenários.' });
+    }
+    await dbRun(
+        `INSERT INTO contract_notes (contract_id, user_id, message) VALUES (?, ?, ?)`,
+        [req.params.id, req.user.id, req.body.message]
+    );
     res.json({ success: true });
 });
+
 app.get('/api/contracts/:id/notes', auth, requireCapability('contracts:read'), async (req, res) => {
-    const notes = await dbAll(`SELECT n.*, u.name as userName FROM contract_notes n JOIN users u ON n.user_id = u.id WHERE contract_id = ? ORDER BY n.created_at ASC`, [req.params.id]);
+    if (!hasMercenaryAccess(req)) {
+        return res.status(403).json({ error: 'Contratos são exclusivos dos Mercenários.' });
+    }
+    const notes = await dbAll(
+        `SELECT n.*, u.name as userName
+         FROM contract_notes n
+         JOIN users u ON n.user_id = u.id
+         WHERE contract_id = ?
+         ORDER BY n.created_at ASC`,
+        [req.params.id]
+    );
     res.json(notes);
 });
 
@@ -1360,6 +1416,187 @@ app.delete('/api/rp-experiments/:id', auth, requireCapability('research:manage')
     } catch (e) { next(e); }
 });
 
+// --- MERCENARY OPERATIONS ---
+async function getMercenaryFactionId() {
+    const row = await dbGet(`SELECT id FROM factions WHERE code = 'mercenaries' LIMIT 1`);
+    return row ? row.id : 5;
+}
+
+function canCreateMercenaryOperation(req) {
+    return req.user.role === 'super_admin' ||
+        (req.user.factionCode === 'mercenaries' &&
+         ['operator', 'commander', 'faction_admin'].includes(req.user.role));
+}
+
+app.get('/api/mercenary/operations', auth, async (req, res) => {
+    if (!hasMercenaryAccess(req)) {
+        return res.status(403).json({ error: 'Operações são exclusivas dos Mercenários.' });
+    }
+    const mercFactionId = await getMercenaryFactionId();
+    const rows = await dbAll(
+        `SELECT fr.*, u.name AS created_by_name, u.username AS created_by_username
+         FROM faction_records fr
+         LEFT JOIN users u ON u.id = fr.created_by
+         WHERE fr.faction_id = ? AND fr.module_code = 'operations'
+         ORDER BY fr.updated_at DESC, fr.id DESC`,
+        [mercFactionId]
+    );
+    res.json(rows.map(r => ({ ...r, extra: JSON.parse(r.extra_json || '{}') })));
+});
+
+app.post('/api/mercenary/operations', auth, async (req, res, next) => {
+    try {
+        if (!canCreateMercenaryOperation(req)) {
+            return res.status(403).json({ error: 'Seu cargo não pode criar operações mercenárias.' });
+        }
+
+        const mercFactionId = await getMercenaryFactionId();
+        const schema = z.object({
+            title: z.string().trim().min(2).max(120),
+            contractCode: z.string().trim().max(80).optional().default(''),
+            objective: z.string().trim().max(500).optional().default(''),
+            location: z.string().trim().max(160).optional().default(''),
+            risk: z.enum(['baixo','medio','alto','extremo']).optional().default('medio'),
+            reward: z.string().trim().max(120).optional().default(''),
+            team: z.string().trim().max(500).optional().default(''),
+            description: z.string().trim().max(5000).optional().default(''),
+            status: z.enum(['planejamento','ativa','suspensa','concluida']).optional().default('planejamento')
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: 'Dados da operação inválidos.', details: parsed.error.issues.map(i => i.message) });
+        }
+        const d = parsed.data;
+        const extra = {
+            contractCode: d.contractCode,
+            objective: d.objective,
+            risk: d.risk,
+            reward: d.reward,
+            team: d.team
+        };
+
+        const result = await dbRun(
+            `INSERT INTO faction_records
+             (faction_id,module_code,title,category,status,location,subject,description,extra_json,created_by)
+             VALUES (?, 'operations', ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [mercFactionId, d.title, 'Operação Mercenária', d.status, d.location, d.objective,
+             d.description, JSON.stringify(extra), req.user.id]
+        );
+
+        await auditLog({
+            userId: req.user.id,
+            factionId: mercFactionId,
+            action: 'CREATE_MERCENARY_OPERATION',
+            entity: 'operations',
+            entityId: result.lastID
+        });
+
+        res.status(201).json({ success: true, id: result.lastID });
+    } catch (e) { next(e); }
+});
+
+app.put('/api/mercenary/operations/:id', auth, async (req, res, next) => {
+    try {
+        if (!hasMercenaryAccess(req)) {
+            return res.status(403).json({ error: 'Operações são exclusivas dos Mercenários.' });
+        }
+
+        const mercFactionId = await getMercenaryFactionId();
+        const current = await dbGet(
+            `SELECT id, created_by FROM faction_records
+             WHERE id=? AND faction_id=? AND module_code='operations'`,
+            [req.params.id, mercFactionId]
+        );
+        if (!current) return res.status(404).json({ error: 'Operação não encontrada.' });
+
+        // Only the creator can edit; super admin is the only global override.
+        if (req.user.role !== 'super_admin' && current.created_by !== req.user.id) {
+            return res.status(403).json({ error: 'Apenas quem criou esta operação pode editá-la.' });
+        }
+
+        const schema = z.object({
+            title: z.string().trim().min(2).max(120),
+            contractCode: z.string().trim().max(80).optional().default(''),
+            objective: z.string().trim().max(500).optional().default(''),
+            location: z.string().trim().max(160).optional().default(''),
+            risk: z.enum(['baixo','medio','alto','extremo']).optional().default('medio'),
+            reward: z.string().trim().max(120).optional().default(''),
+            team: z.string().trim().max(500).optional().default(''),
+            description: z.string().trim().max(5000).optional().default(''),
+            status: z.enum(['planejamento','ativa','suspensa','concluida']).optional().default('planejamento')
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json({ error: 'Dados inválidos.' });
+        const d = parsed.data;
+        const extra = {
+            contractCode: d.contractCode,
+            objective: d.objective,
+            risk: d.risk,
+            reward: d.reward,
+            team: d.team
+        };
+
+        await dbRun(
+            `UPDATE faction_records
+             SET title=?, status=?, location=?, subject=?, description=?, extra_json=?, updated_at=CURRENT_TIMESTAMP
+             WHERE id=? AND faction_id=? AND module_code='operations'`,
+            [d.title, d.status, d.location, d.objective, d.description, JSON.stringify(extra),
+             req.params.id, mercFactionId]
+        );
+        res.json({ success: true });
+    } catch (e) { next(e); }
+});
+
+app.post('/api/mercenary/operations/:id/complete', auth, async (req, res, next) => {
+    try {
+        if (!hasMercenaryAccess(req)) {
+            return res.status(403).json({ error: 'Operações são exclusivas dos Mercenários.' });
+        }
+
+        const mercFactionId = await getMercenaryFactionId();
+        const current = await dbGet(
+            `SELECT id, created_by FROM faction_records
+             WHERE id=? AND faction_id=? AND module_code='operations'`,
+            [req.params.id, mercFactionId]
+        );
+        if (!current) return res.status(404).json({ error: 'Operação não encontrada.' });
+
+        if (req.user.role !== 'super_admin' && current.created_by !== req.user.id) {
+            return res.status(403).json({ error: 'Apenas quem criou esta operação pode marcá-la como concluída.' });
+        }
+
+        await dbRun(
+            `UPDATE faction_records SET status='concluida', updated_at=CURRENT_TIMESTAMP
+             WHERE id=? AND faction_id=? AND module_code='operations'`,
+            [req.params.id, mercFactionId]
+        );
+        res.json({ success: true });
+    } catch (e) { next(e); }
+});
+
+app.delete('/api/mercenary/operations/:id', auth, async (req, res, next) => {
+    try {
+        if (!isMercenaryLeader(req)) {
+            return res.status(403).json({ error: 'Apenas o líder da facção pode excluir operações.' });
+        }
+
+        const mercFactionId = await getMercenaryFactionId();
+        const current = await dbGet(
+            `SELECT id FROM faction_records
+             WHERE id=? AND faction_id=? AND module_code='operations'`,
+            [req.params.id, mercFactionId]
+        );
+        if (!current) return res.status(404).json({ error: 'Operação não encontrada.' });
+
+        await dbRun(
+            `DELETE FROM faction_records
+             WHERE id=? AND faction_id=? AND module_code='operations'`,
+            [req.params.id, mercFactionId]
+        );
+        res.json({ success: true, deleted: true });
+    } catch (e) { next(e); }
+});
+
 // --- ADMIN / DASHBOARD STATS ---
 app.get('/api/stats', auth, async (req, res) => {
     const fId = getFactionScope(req);
@@ -1432,12 +1669,14 @@ app.post('/api/bank', auth, async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?)
         `, [fId, req.user.id, type, numAmount, reason, transaction_date]);
         
-        await auditLog(db, {
+        await auditLog({
             userId: req.user.id,
             factionId: fId,
             action: `bank_${type}`,
             entity: 'bank',
-            metadata: JSON.stringify({ amount: numAmount, reason, date: transaction_date })
+            metadata: { amount: numAmount, reason, date: transaction_date },
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent')
         });
         
         res.json({ success: true });
