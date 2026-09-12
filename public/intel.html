@@ -1,45 +1,17 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="style.css">
-  <title>intel</title>
-</head>
-<body onload="initFactionModule()">
-  <nav id="mainNav"></nav>
-  <div class="container">
-    <div class="card" style="border-top:3px solid var(--accent);">
-      <h2 id="moduleTitle" class="text-accent" style="margin-top:0;">MÓDULO</h2>
-      <p id="moduleSubtitle" class="text-muted">Registros RP da facção</p>
-      <button id="newBtn" class="btn-success w-auto" onclick="openRecordForm()">+ NOVO REGISTRO</button>
-    </div>
-
-    <div id="recordForm" class="card hidden" style="border:1px solid var(--accent);">
-      <h3 id="formTitle" class="text-accent">NOVO REGISTRO</h3>
-      <input id="recordTitle" type="text" placeholder="Título">
-      <div class="d-flex gap-1 flex-wrap">
-        <div style="flex:1; min-width:220px;"><label id="labelCategory">Categoria</label><input id="recordCategory" type="text"></div>
-        <div style="flex:1; min-width:220px;"><label>Status</label><select id="recordStatus"></select></div>
-      </div>
-      <div class="d-flex gap-1 flex-wrap">
-        <div style="flex:1; min-width:220px;"><label id="labelSubject">Assunto</label><input id="recordSubject" type="text"></div>
-        <div style="flex:1; min-width:220px;"><label id="labelLocation">Local</label><input id="recordLocation" type="text"></div>
-      </div>
-      <label>Descrição / contexto RP</label>
-      <textarea id="recordDescription" rows="5"></textarea>
-      <label>Detalhes adicionais</label>
-      <textarea id="recordExtra" rows="3"></textarea>
-      <div class="d-flex gap-1">
-        <button class="btn-success" onclick="saveFactionRecord()">SALVAR</button>
-        <button class="btn-secondary" onclick="closeRecordForm()">CANCELAR</button>
-      </div>
-    </div>
-
-    <div id="recordList"></div>
-  </div>
-  <script>window.FACTION_MODULE = "intel";</script>
-  <script src="app.js"></script>
-  <script src="faction-module.js"></script>
-</body>
-</html>
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css"><title>Inteligência Mercenária</title>
+<style>
+.wrap{max-width:1120px;margin:30px auto}.hero{background:linear-gradient(120deg,#02070d,#071321);border:1px solid #17314d;border-top:3px solid #3b82f6;padding:22px}.intel-grid{display:grid;gap:14px}.intel{background:#03070b;border:1px solid #17314d;padding:18px}.classification{color:#ef4444;letter-spacing:2px;font-size:.85em}
+</style></head><body onload="initIntel()"><nav id="mainNav"></nav><div class="container wrap">
+<div class="hero"><h2 style="color:#60a5fa;margin:0">◈ TERMINAL DE INTELIGÊNCIA</h2><p class="text-muted">Relatórios, fontes, alvos e informações estratégicas.</p><button class="btn-success w-auto" onclick="intelForm.classList.remove('hidden')">+ NOVO INFORME</button></div>
+<div id="intelForm" class="card hidden"><h3 class="text-accent">NOVO INFORME</h3><input id="iTitle" placeholder="Título do informe">
+<div class="d-flex gap-1 flex-wrap"><select id="iClass" style="flex:1"><option>PÚBLICO</option><option>RESTRITO</option><option>CONFIDENCIAL</option><option>SIGILOSO</option></select><select id="iStatus" style="flex:1"><option>NOVO</option><option>ANALISANDO</option><option>CONFIRMADO</option><option>ARQUIVADO</option></select></div>
+<div class="d-flex gap-1 flex-wrap"><input id="iTarget" placeholder="Alvo / Fonte" style="flex:1"><input id="iArea" placeholder="Área / Região" style="flex:1"></div>
+<input id="iTrust" placeholder="Confiabilidade / prioridade"><textarea id="iDesc" rows="5" placeholder="Conteúdo do informe"></textarea>
+<div class="d-flex gap-1"><button class="btn-success" onclick="saveIntel()">TRANSMITIR</button><button class="btn-secondary" onclick="intelForm.classList.add('hidden')">CANCELAR</button></div></div>
+<div id="intelList" class="intel-grid" style="margin-top:16px"></div></div>
+<script src="app.js"></script><script>
+async function initIntel(){const u=checkAuth();if(!u)return;if(u.role!=='super_admin'&&u.factionSlug!=='mercenaries'){location.href='/unauthorized.html';return}loadIntel()}
+async function saveIntel(){const title=iTitle.value.trim();if(title.length<2)return showError('Informe o título.');await api('/api/faction-records/intel',{method:'POST',body:{title,category:iClass.value,status:iStatus.value,location:iArea.value.trim(),subject:iTarget.value.trim(),description:iDesc.value.trim(),extra:{details:iTrust.value.trim()}}});showSuccess('Informe registrado.');intelForm.classList.add('hidden');loadIntel()}
+async function loadIntel(){const rows=await api('/api/faction-records/intel')||[];intelList.innerHTML=rows.map(r=>`<div class="intel"><div class="classification">${escapeHtml(r.category||'RESTRITO')}</div><h3 class="text-accent">${escapeHtml(r.title)}</h3><p><b>Status:</b> ${escapeHtml(r.status||'-')} | <b>Área:</b> ${escapeHtml(r.location||'-')}</p><p><b>Alvo/Fonte:</b> ${escapeHtml(r.subject||'-')}</p>${r.extra?.details?`<p><b>Confiabilidade:</b> ${escapeHtml(r.extra.details)}</p>`:''}${r.description?`<p>${escapeHtml(r.description)}</p>`:''}</div>`).join('')||'<div class="card">Nenhum informe registrado.</div>'}
+</script></body></html>

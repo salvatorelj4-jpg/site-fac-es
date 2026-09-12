@@ -186,7 +186,15 @@
             const date = document.getElementById('t-date').value;
             
             try {
-                await apiForm('/api/bank', { type, amount, reason, transaction_date: date });
+                await api('/api/bank', {
+                    method: 'POST',
+                    body: {
+                        type,
+                        amount: Number(amount),
+                        reason,
+                        transaction_date: date
+                    }
+                });
                 showSuccess('Transação registrada com sucesso!');
                 
                 document.getElementById('t-type').value = '';

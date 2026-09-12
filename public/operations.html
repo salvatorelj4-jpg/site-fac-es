@@ -1,45 +1,31 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="style.css">
-  <title>operations</title>
-</head>
-<body onload="initFactionModule()">
-  <nav id="mainNav"></nav>
-  <div class="container">
-    <div class="card" style="border-top:3px solid var(--accent);">
-      <h2 id="moduleTitle" class="text-accent" style="margin-top:0;">MÓDULO</h2>
-      <p id="moduleSubtitle" class="text-muted">Registros RP da facção</p>
-      <button id="newBtn" class="btn-success w-auto" onclick="openRecordForm()">+ NOVO REGISTRO</button>
-    </div>
-
-    <div id="recordForm" class="card hidden" style="border:1px solid var(--accent);">
-      <h3 id="formTitle" class="text-accent">NOVO REGISTRO</h3>
-      <input id="recordTitle" type="text" placeholder="Título">
-      <div class="d-flex gap-1 flex-wrap">
-        <div style="flex:1; min-width:220px;"><label id="labelCategory">Categoria</label><input id="recordCategory" type="text"></div>
-        <div style="flex:1; min-width:220px;"><label>Status</label><select id="recordStatus"></select></div>
-      </div>
-      <div class="d-flex gap-1 flex-wrap">
-        <div style="flex:1; min-width:220px;"><label id="labelSubject">Assunto</label><input id="recordSubject" type="text"></div>
-        <div style="flex:1; min-width:220px;"><label id="labelLocation">Local</label><input id="recordLocation" type="text"></div>
-      </div>
-      <label>Descrição / contexto RP</label>
-      <textarea id="recordDescription" rows="5"></textarea>
-      <label>Detalhes adicionais</label>
-      <textarea id="recordExtra" rows="3"></textarea>
-      <div class="d-flex gap-1">
-        <button class="btn-success" onclick="saveFactionRecord()">SALVAR</button>
-        <button class="btn-secondary" onclick="closeRecordForm()">CANCELAR</button>
-      </div>
-    </div>
-
-    <div id="recordList"></div>
-  </div>
-  <script>window.FACTION_MODULE = "operations";</script>
-  <script src="app.js"></script>
-  <script src="faction-module.js"></script>
-</body>
-</html>
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css"><title>Operações Mercenárias</title>
+<style>
+.wrap{max-width:1200px;margin:28px auto}.hero{border:1px solid #17314d;border-top:3px solid #3b82f6;background:linear-gradient(120deg,#02070d,#07131f);padding:22px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.stat{background:#03070b;border:1px solid #17314d;padding:17px;text-align:center}.stat b{font-size:2em;color:#60a5fa}
+.ops{display:grid;gap:14px}.op{background:linear-gradient(145deg,#04090f,#020508);border:1px solid #17314d;padding:18px}.ophead{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.tag{border:1px solid #294b70;padding:4px 8px;color:#93c5fd}
+@media(max-width:800px){.stats{grid-template-columns:repeat(2,1fr)}}
+</style></head><body onload="initOps()"><nav id="mainNav"></nav><div class="container wrap">
+<div class="hero"><h2 style="color:#60a5fa;margin:0">☠ CENTRAL DE OPERAÇÕES</h2><p class="text-muted">Planejamento, execução e encerramento de operações do Sindicato.</p><button class="btn-success w-auto" onclick="openOp()">+ NOVA OPERAÇÃO</button></div>
+<div class="stats"><div class="stat"><b id="sPlan">0</b><br>PLANEJAMENTO</div><div class="stat"><b id="sActive">0</b><br>ATIVAS</div><div class="stat"><b id="sSusp">0</b><br>SUSPENSAS</div><div class="stat"><b id="sDone">0</b><br>CONCLUÍDAS</div></div>
+<div id="opForm" class="card hidden"><h3 class="text-accent">REGISTRO OPERACIONAL</h3>
+<input id="oTitle" placeholder="Codinome / nome da operação"><div class="d-flex gap-1 flex-wrap"><input id="oContract" placeholder="Código do contrato (opcional)" style="flex:1"><input id="oLocation" placeholder="Local" style="flex:1"></div>
+<textarea id="oObjective" rows="2" placeholder="Objetivo principal"></textarea><div class="d-flex gap-1 flex-wrap"><select id="oRisk" style="flex:1"><option value="baixo">RISCO BAIXO</option><option value="medio">RISCO MÉDIO</option><option value="alto">RISCO ALTO</option><option value="extremo">RISCO EXTREMO</option></select>
+<select id="oStatus" style="flex:1"><option value="planejamento">PLANEJAMENTO</option><option value="ativa">ATIVA</option><option value="suspensa">SUSPENSA</option><option value="concluida">CONCLUÍDA</option></select></div>
+<input id="oReward" placeholder="Recompensa"><input id="oTeam" placeholder="Equipe / agentes envolvidos"><textarea id="oDesc" rows="4" placeholder="Descrição operacional"></textarea>
+<div class="d-flex gap-1"><button class="btn-success" onclick="saveOp()">SALVAR</button><button class="btn-secondary" onclick="closeOp()">CANCELAR</button></div></div>
+<div id="opsList" class="ops"></div></div>
+<script src="app.js"></script><script>
+let editing=null;let opCache=[];
+function isMercLeader(){const u=getUser();return u&&(u.role==='super_admin'||u.role==='faction_admin')}
+function canCreateOp(){const u=getUser();return u&&(u.role==='super_admin'||['operator','commander','faction_admin'].includes(u.role))}
+function openOp(r=null){if(!canCreateOp())return showError('Seu cargo não pode criar operações.');editing=r?.id||null;oTitle.value=r?.title||'';oContract.value=r?.extra?.contractCode||'';oLocation.value=r?.location||'';oObjective.value=r?.subject||'';oRisk.value=r?.extra?.risk||'medio';oStatus.value=r?.status||'planejamento';oReward.value=r?.extra?.reward||'';oTeam.value=r?.extra?.team||'';oDesc.value=r?.description||'';opForm.classList.remove('hidden')}
+function closeOp(){editing=null;opForm.classList.add('hidden')}
+async function initOps(){const u=checkAuth();if(!u)return;if(u.role!=='super_admin'&&u.factionSlug!=='mercenaries'){location.href='/unauthorized.html';return}loadOps()}
+async function saveOp(){const body={title:oTitle.value.trim(),contractCode:oContract.value.trim(),objective:oObjective.value.trim(),location:oLocation.value.trim(),risk:oRisk.value,reward:oReward.value.trim(),team:oTeam.value.trim(),description:oDesc.value.trim(),status:oStatus.value};if(body.title.length<2)return showError('Informe o nome da operação.');
+await api(editing?`/api/mercenary/operations/${editing}`:'/api/mercenary/operations',{method:editing?'PUT':'POST',body});showSuccess(editing?'Operação atualizada.':'Operação criada.');closeOp();loadOps()}
+async function completeOp(id){await api(`/api/mercenary/operations/${id}/complete`,{method:'POST'});showSuccess('Operação concluída.');loadOps()}
+async function deleteOp(id){if(!confirm('Excluir esta operação permanentemente?'))return;await api(`/api/mercenary/operations/${id}`,{method:'DELETE'});showSuccess('Operação excluída.');loadOps()}
+async function loadOps(){opCache=await api('/api/mercenary/operations')||[];sPlan.textContent=opCache.filter(x=>x.status==='planejamento').length;sActive.textContent=opCache.filter(x=>x.status==='ativa').length;sSusp.textContent=opCache.filter(x=>x.status==='suspensa').length;sDone.textContent=opCache.filter(x=>x.status==='concluida').length;
+const uid=getUser().id;opsList.innerHTML=opCache.map(r=>{const mine=r.created_by===uid||getUser().role==='super_admin';return `<div class="op"><div class="ophead"><div><span class="tag">${escapeHtml(String(r.status).toUpperCase())}</span><h3 class="text-accent">${escapeHtml(r.title)}</h3></div><div class="d-flex gap-1">${mine?`<button class="btn-secondary w-auto" onclick='openOp(${JSON.stringify(r).replace(/'/g,"&#39;")})'>EDITAR</button>${r.status!=='concluida'?`<button class="btn-success w-auto" onclick="completeOp(${r.id})">CONCLUIR</button>`:''}`:''}${isMercLeader()?`<button class="btn-danger w-auto" onclick="deleteOp(${r.id})">EXCLUIR</button>`:''}</div></div>
+<p><b>Contrato:</b> ${escapeHtml(r.extra?.contractCode||'-')} | <b>Risco:</b> ${escapeHtml(r.extra?.risk||'-')} | <b>Local:</b> ${escapeHtml(r.location||'-')}</p><p><b>Objetivo:</b> ${escapeHtml(r.subject||'-')}</p><p><b>Equipe:</b> ${escapeHtml(r.extra?.team||'-')} | <b>Recompensa:</b> ${escapeHtml(r.extra?.reward||'-')}</p>${r.description?`<p>${escapeHtml(r.description)}</p>`:''}<small class="text-muted">Registrado por ${escapeHtml(r.created_by_name||r.created_by_username||'desconhecido')} • ${formatDateTime(r.created_at)}</small></div>`}).join('')||'<div class="card">Nenhuma operação registrada.</div>'}
+</script></body></html>

@@ -317,7 +317,6 @@ function buildNav(currentPage) {
         { name: 'Painel', url: '/dashboard.html' },
         { name: 'Caixa', url: '/banco.html' },
         { name: 'Contratos', url: '/contratos.html' },
-        { name: 'Operadores', url: '/operators.html' },
         { name: 'Clientes', url: '/clients.html' },
         { name: 'Operações', url: '/operations.html' },
         { name: 'Inteligência', url: '/intel.html' },

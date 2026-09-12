@@ -320,6 +320,7 @@
                 <a href="/contratar.html" class="cyber-btn" style="width:100%; max-width:400px;">NOVA SOLICITAÇÃO</a>
             </div>
 
+            <div id="form-error" style="display:none;margin-bottom:18px;padding:12px 14px;border:1px solid #7f1d1d;background:rgba(127,29,29,.18);color:#f87171;text-transform:none;"></div>
             <form id="contractForm" onsubmit="enviarContrato(event)">
                 <input type="text" name="honeypot" style="display:none;">
 
@@ -337,7 +338,7 @@
                 <div class="input-row">
                     <div class="input-group">
                         <label>TIPO DE MISSÃO</label>
-                        <select name="missionType" onchange="toggleOutroMissao(this.value)">
+                        <select name="missionType" onchange="toggleOutroMissao(this.value)" required>
                             <option value="Proteção/Escolta">Proteção/Escolta</option>
                             <option value="Eliminação">Eliminação / Caça</option>
                             <option value="Busca e Recuperação">Busca e Recuperação</option>
@@ -348,18 +349,18 @@
                     </div>
                     <div class="input-group">
                         <label>LOCALIZAÇÃO / SETOR</label>
-                        <input type="text" name="location" placeholder="Ex: Cordon, Rostok, etc.">
+                        <input type="text" name="location" placeholder="Ex: Cordon, Rostok, etc." required>
                     </div>
                 </div>
 
                 <div class="input-group" style="margin-bottom: 25px;">
                     <label>ALVO / OBJETIVO PRINCIPAL</label>
-                    <input type="text" name="target" placeholder="Quem ou o que é o alvo?">
+                    <input type="text" name="target" placeholder="Quem ou o que é o alvo?" required>
                 </div>
 
                 <div class="input-group" style="margin-bottom: 25px;">
                     <label>DESCRIÇÃO DETALHADA DO TRABALHO</label>
-                    <textarea name="description" rows="3" placeholder="Forneça o máximo de detalhes possível sobre o trabalho solicitado."></textarea>
+                    <textarea name="description" rows="3" placeholder="Forneça o máximo de detalhes possível sobre o trabalho solicitado." required></textarea>
                 </div>
 
                 <div class="input-row">
@@ -433,6 +434,15 @@
             }
             delete data.missionTypeOutro;
 
+            const errorBox = document.getElementById('form-error');
+            errorBox.style.display = 'none';
+            errorBox.textContent = '';
+
+            if (!e.target.checkValidity()) {
+                e.target.reportValidity();
+                return;
+            }
+
             try {
                 const btn = e.target.querySelector('button');
                 btn.innerHTML = "🔒 TRANSMITINDO... <span>&raquo;</span>";
@@ -450,12 +460,17 @@
                     document.getElementById('sucesso-msg').style.display = 'flex';
                     document.getElementById('cod-rastreio').innerText = result.code || "REG-999X";
                 } else {
-                    alert('Falha na transmissão. Tente novamente.');
+                    errorBox.textContent = result.error || 'Falha na transmissão. Verifique os campos obrigatórios.';
+                    errorBox.style.display = 'block';
                     btn.innerHTML = "🔒 ENVIAR TRANSMISSÃO ENCRIPTADA <span>&raquo;</span>";
                     btn.disabled = false;
                 }
             } catch(err) {
-                alert('Erro de conexão com o servidor local.');
+                errorBox.textContent = 'Erro de conexão com o servidor.';
+                errorBox.style.display = 'block';
+                const btn = e.target.querySelector('button');
+                btn.innerHTML = "🔒 ENVIAR TRANSMISSÃO ENCRIPTADA <span>&raquo;</span>";
+                btn.disabled = false;
             }
         }
     </script>

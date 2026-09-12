@@ -1,94 +1,40 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
-    <title>Painel de Contratos</title>
-</head>
-<body onload="checkAuth('operator'); carregarPainelContratos()">
-    <nav id="mainNav"></nav>
-
-    <div class="container">
-        <h2 style="color: #3498db; border-bottom: 2px solid #2c3e50; padding-bottom: 10px; margin-bottom: 30px;">
-            TERMINAL DE CONTRATOS ATIVOS
-        </h2>
-        
-        <div id="listaContratos">Carregando dados da rede...</div>
-    </div>
-
-    <script src="app.js"></script>
-    <script>
-        async function carregarPainelContratos() {
-            try {
-                const res = await fetch('/api/contracts', {
-                    headers: { 'Authorization': localStorage.getItem('stalker_token') }
-                });
-                
-                if (!res.ok) {
-                    document.getElementById('listaContratos').innerHTML = "<p style='color:red;'>Acesso Negado ou Falha de Conexão.</p>";
-                    return;
-                }
-                
-                const contratos = await res.json();
-                const div = document.getElementById('listaContratos');
-                
-                if (contratos.length === 0) {
-                    div.innerHTML = "<p style='color:#7f8c8d;'>Nenhum contrato pendente no sistema.</p>";
-                    return;
-                }
-                
-                div.innerHTML = contratos.reverse().map(c => {
-                    let statusColor = '#3498db';
-                    if(c.status === 'ACCEPTED') statusColor = '#f39c12';
-                    if(c.status === 'COMPLETED') statusColor = '#2ecc71';
-                    if(c.status === 'FAILED') statusColor = '#e74c3c';
-                    
-                    return `
-                    <div class="pda-ui" style="margin-bottom: 20px; border-left: 4px solid ${statusColor};">
-                        <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-                            <div>
-                                <h3 style="margin:0 0 5px 0; color:${statusColor};">${c.public_code} - ${c.mission_type || 'Misteriosa'}</h3>
-                                <p style="margin:0 0 10px 0; color:#aaa;">Cliente: ${c.client_name} | Local: ${c.location || 'N/A'}</p>
-                                <p style="margin:0 0 5px 0; color:#ddd;"><strong>Alvo/Objetivo:</strong> ${c.target || c.objective}</p>
-                                <p style="margin:0 0 10px 0; color:#aaa;">${c.description}</p>
-                                <div style="display:flex; gap:15px; font-size: 0.9em;">
-                                    <span style="color:#e67e22;">Recompensa: ${c.reward || 'A Negociar'}</span>
-                                    <span style="color:#e74c3c;">Risco: ${c.risk_level || 'N/A'}</span>
-                                    <span style="color:#2ecc71;">Data: ${new Date(c.created_at).toLocaleString()}</span>
-                                </div>
-                            </div>
-                            <div style="display:flex; flex-direction:column; gap:10px;">
-                                <select onchange="atualizarStatusContrato(${c.id}, this.value)" style="background:#0f1011; color:${statusColor}; border-color:${statusColor}; padding:8px;">
-                                    <option value="NEW" ${c.status === 'NEW' ? 'selected' : ''}>NOVO</option>
-                                    <option value="ACCEPTED" ${c.status === 'ACCEPTED' ? 'selected' : ''}>ACEITO (EM ANDAMENTO)</option>
-                                    <option value="COMPLETED" ${c.status === 'COMPLETED' ? 'selected' : ''}>CONCLUÍDO</option>
-                                    <option value="FAILED" ${c.status === 'FAILED' ? 'selected' : ''}>FALHOU / ABORTADO</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>`;
-                }).join('');
-            } catch(e) {
-                console.error(e);
-            }
-        }
-        
-        async function atualizarStatusContrato(id, novoStatus) {
-            if(confirm("Confirmar atualização do contrato?")) {
-                await fetch(`/api/contracts/${id}/status`, {
-                    method: 'PUT',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': localStorage.getItem('stalker_token')
-                    },
-                    body: JSON.stringify({ status: novoStatus })
-                });
-                location.reload();
-            } else {
-                location.reload(); // reset select
-            }
-        }
-    </script>
-</body>
-</html>
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css"><title>Contratos Mercenários</title>
+<style>
+.merc-wrap{max-width:1180px;margin:30px auto}.merc-hero{background:linear-gradient(120deg,#02070d,#071321);border:1px solid #17314d;border-top:3px solid #3b82f6;padding:24px}
+.contract-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}.contract-card{background:linear-gradient(145deg,#04090f,#020508);border:1px solid #17314d;padding:18px;box-shadow:inset 0 0 30px rgba(59,130,246,.04)}
+.code{color:#60a5fa;letter-spacing:2px}.meta{color:#64748b;font-size:.9em}.status{display:inline-block;padding:4px 9px;border:1px solid #294b70;color:#93c5fd;margin:6px 0}
+</style></head><body onload="initContracts()"><nav id="mainNav"></nav><div class="container merc-wrap">
+<div class="merc-hero"><h2 style="color:#60a5fa;margin:0">☠ TERMINAL DE CONTRATOS</h2><p class="meta">Somente solicitações recebidas pelo formulário público aparecem aqui.</p></div>
+<div id="contractsList" class="contract-grid" style="margin-top:18px"></div></div>
+<script src="app.js"></script><script>
+function contractStatus(s){return ({NEW:'NOVO',ACCEPTED:'ACEITO',SUSPENDED:'SUSPENSO',COMPLETED:'CONCLUÍDO',FAILED:'FALHOU',REJECTED:'RECUSADO'})[s]||s}
+function isLeader(){const u=getUser();return u&&(u.role==='super_admin'||u.role==='faction_admin')}
+async function initContracts(){const u=checkAuth();if(!u)return;if(u.role!=='super_admin'&&u.factionSlug!=='mercenaries'){location.href='/unauthorized.html';return}loadContractsMerc()}
+async function loadContractsMerc(){
+ const list=document.getElementById('contractsList');
+ try{
+  const rows=await api('/api/contracts')||[];
+  list.innerHTML=rows.map(c=>`<div class="contract-card">
+   <div class="code">${escapeHtml(c.public_code)}</div><span class="status">${escapeHtml(contractStatus(c.status))}</span>
+   <h3>${escapeHtml(c.mission_type||'MISSÃO NÃO CLASSIFICADA')}</h3>
+   <p><b>Cliente:</b> ${escapeHtml(c.client_name||'-')}</p>
+   <p><b>Contato:</b> ${escapeHtml(c.contact||c.discord||'-')}</p>
+   <p><b>Local:</b> ${escapeHtml(c.location||'-')}</p>
+   <p><b>Alvo/Objetivo:</b> ${escapeHtml(c.target||c.objective||'-')}</p>
+   <p><b>Risco:</b> ${escapeHtml(c.risk_level||'-')} &nbsp; <b>Recompensa:</b> ${escapeHtml(c.reward||'A negociar')}</p>
+   ${c.description?`<p>${escapeHtml(c.description)}</p>`:''}
+   ${c.additional_info?`<p class="meta">${escapeHtml(c.additional_info)}</p>`:''}
+   <div class="meta">${formatDateTime(c.created_at)}</div>
+   ${isLeader()?`<select onchange="changeContract(${c.id},this.value)" style="margin-top:12px">
+    <option value="NEW" ${c.status==='NEW'?'selected':''}>NOVO</option>
+    <option value="ACCEPTED" ${c.status==='ACCEPTED'?'selected':''}>ACEITO</option>
+    <option value="SUSPENDED" ${c.status==='SUSPENDED'?'selected':''}>SUSPENSO</option>
+    <option value="COMPLETED" ${c.status==='COMPLETED'?'selected':''}>CONCLUÍDO</option>
+    <option value="REJECTED" ${c.status==='REJECTED'?'selected':''}>RECUSADO</option>
+   </select>`:''}
+  </div>`).join('')||'<div class="card">Nenhum formulário de contrato recebido.</div>';
+ }catch(e){list.innerHTML=`<div class="card text-danger">${escapeHtml(e.message)}</div>`}
+}
+async function changeContract(id,status){try{await api(`/api/contracts/${id}/status`,{method:'PUT',body:{status}});showSuccess('Contrato atualizado.');loadContractsMerc()}catch(e){console.error(e)}}
+</script></body></html>

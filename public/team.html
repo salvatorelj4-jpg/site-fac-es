@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css">
+<title>Equipe da Facção</title>
+<style>
+.team-shell{max-width:1050px;margin:32px auto}.team-head{border-top:3px solid var(--accent);background:linear-gradient(135deg,rgba(20,30,40,.92),rgba(3,6,9,.96))}
+.team-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.member-card{background:linear-gradient(145deg,rgba(10,14,18,.96),rgba(3,5,7,.98));border:1px solid var(--border);padding:18px;position:relative}
+.member-card:before{content:'';position:absolute;top:0;left:0;width:45px;height:2px;background:var(--accent)}
+.member-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+</style>
+</head>
+<body onload="initTeam()"><nav id="mainNav"></nav>
+<div class="container team-shell">
+  <div class="card team-head">
+    <h2 id="teamTitle" class="text-accent">EQUIPE</h2>
+    <p id="teamDesc" class="text-muted"></p>
+    <button id="newUserBtn" class="btn-success w-auto" onclick="openUserForm()">+ NOVO USUÁRIO</button>
+  </div>
+  <div id="userForm" class="card hidden">
+    <h3 class="text-accent">NOVO USUÁRIO DA FACÇÃO</h3>
+    <input id="uName" placeholder="Nome">
+    <input id="uUsername" placeholder="Login">
+    <input id="uPassword" type="password" placeholder="Senha (mínimo 6 caracteres)">
+    <select id="uRole">
+      <option value="viewer">Viewer</option><option value="operator">Operator</option>
+      <option value="commander">Commander</option><option value="faction_admin">Faction Admin</option>
+    </select>
+    <div class="d-flex gap-1"><button class="btn-success" onclick="createUserLocal()">CRIAR</button><button class="btn-secondary" onclick="closeUserForm()">CANCELAR</button></div>
+  </div>
+  <div id="teamList" class="team-grid"></div>
+</div>
+<script src="app.js"></script>
+<script>
+const roleLabel={viewer:'VIEWER',operator:'OPERATOR',commander:'COMMANDER',faction_admin:'FACTION ADMIN'};
+function me(){return getUser()}
+function canManage(){const u=me();return u&&(u.role==='faction_admin'||u.role==='super_admin')}
+function openUserForm(){if(!canManage())return showError('Seu cargo não pode gerenciar usuários.');document.getElementById('userForm').classList.remove('hidden')}
+function closeUserForm(){document.getElementById('userForm').classList.add('hidden')}
+async function initTeam(){
+ const u=checkAuth();if(!u)return;
+ const names={bandits:'BANDIDOS',mercenaries:'MERCENÁRIOS'};
+ document.getElementById('teamTitle').textContent=`EQUIPE — ${names[u.factionSlug]||'FACÇÃO'}`;
+ document.getElementById('teamDesc').textContent='Somente membros da sua facção aparecem aqui.';
+ if(!canManage())document.getElementById('newUserBtn').style.display='none';
+ loadTeam();
+}
+async function loadTeam(){
+ const list=document.getElementById('teamList');
+ try{
+   const users=await api('/api/users')||[];
+   list.innerHTML=users.map(u=>`<div class="member-card">
+     <h3>${escapeHtml(u.name)} <span class="text-muted">@${escapeHtml(u.username)}</span></h3>
+     <p class="text-accent">${escapeHtml(roleLabel[u.role]||u.role)}</p>
+     <p>${u.active?'ATIVO':'INATIVO'}</p>
+     ${canManage()&&u.id!==me().id&&u.role!=='super_admin'?`<div class="member-actions">
+       <button class="${u.active?'btn-warning':'btn-success'} w-auto" onclick="toggleUserLocal(${u.id},${u.active?1:0})">${u.active?'DESATIVAR':'ATIVAR'}</button>
+       <button class="btn-danger w-auto" onclick="deleteUserLocal(${u.id},'${String(u.username).replace(/'/g,"\\'")}')">EXCLUIR</button>
+     </div>`:''}
+   </div>`).join('')||'<div class="card">Nenhum usuário nesta facção.</div>';
+ }catch(e){list.innerHTML=`<div class="card text-danger">${escapeHtml(e.message)}</div>`}
+}
+async function createUserLocal(){
+ const name=uName.value.trim(),username=uUsername.value.trim(),password=uPassword.value,role=uRole.value;
+ if(name.length<2)return showError('Informe o nome.');
+ if(username.length<3)return showError('Login precisa ter pelo menos 3 caracteres.');
+ if(password.length<6)return showError('Senha precisa ter pelo menos 6 caracteres.');
+ try{
+   await api('/api/users',{method:'POST',body:{name,username,password,role,factionId:me().factionId}});
+   showSuccess('Usuário criado.');closeUserForm();loadTeam();
+ }catch(e){console.error(e)}
+}
+async function toggleUserLocal(id,active){
+ const users=await api('/api/users')||[];const u=users.find(x=>x.id===id);if(!u)return;
+ await api(`/api/users/${id}`,{method:'PUT',body:{username:u.username,name:u.name,role:u.role,factionId:u.faction_id,active:active?0:1}});
+ showSuccess('Status atualizado.');loadTeam();
+}
+async function deleteUserLocal(id,username){
+ if(!confirm(`Excluir @${username} permanentemente? O mesmo login poderá ser reutilizado depois.`))return;
+ await api(`/api/users/${id}`,{method:'DELETE'});showSuccess('Usuário excluído.');loadTeam();
+}
+</script></body></html>
