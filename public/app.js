@@ -10,6 +10,40 @@ const API = '';
 const TOKEN_KEY = 'stalker_token';
 const USER_KEY = 'stalker_user';
 
+const SUPER_ADMIN_FACTIONS = {
+  '1': { slug: 'duty', name: 'Duty' },
+  '2': { slug: 'ecologists', name: 'Ecologistas' },
+  '3': { slug: 'bandits', name: 'Bandidos' },
+  '4': { slug: 'freedom', name: 'Freedom' },
+  '5': { slug: 'mercenaries', name: 'Mercenários' }
+};
+
+function getSuperAdminContext() {
+  const user = getUser();
+  if (!user || user.role !== 'super_admin') return null;
+  const id = localStorage.getItem('super_admin_context') || '';
+  return id && SUPER_ADMIN_FACTIONS[id]
+    ? { id, ...SUPER_ADMIN_FACTIONS[id] }
+    : null;
+}
+
+function getEffectiveFactionSlug() {
+  const user = getUser();
+  if (!user) return 'default';
+  const ctx = getSuperAdminContext();
+  return ctx ? ctx.slug : (user.factionSlug || 'default');
+}
+
+function switchSuperAdminContext(value) {
+  if (value) {
+    localStorage.setItem('super_admin_context', value);
+    window.location.href = '/dashboard.html';
+  } else {
+    localStorage.removeItem('super_admin_context');
+    window.location.href = '/admin.html';
+  }
+}
+
 // ==========================================
 // 2. AUTH UTILITIES
 // ==========================================
@@ -76,7 +110,7 @@ function checkAuth(requireRole = null) {
      return null;
   }
 
-  applyTheme(user.factionSlug || 'default');
+  applyTheme(getEffectiveFactionSlug());
   injectNav(window.location.pathname);
   
   return user;
@@ -235,120 +269,122 @@ function getThemeClass(slug) {
 // 5. NAVIGATION
 // ==========================================
 
+function getFactionLinks(faction, role = null) {
+  let links = [];
+
+  if (faction === 'ecologists') {
+    links = [
+      { name: 'Painel', url: '/dashboard.html' },
+      { name: 'Caixa', url: '/banco.html' },
+      { name: 'Stalkers', url: '/stalkers.html' },
+      { name: 'Comércio', url: '/trade.html' },
+      { name: 'Estoque', url: '/estoque.html' },
+      { name: 'Pesquisa', url: '/research.html' },
+      { name: 'Relatórios', url: '/relatorios.html' },
+      { name: 'Histórico', url: '/historico.html' },
+      { name: 'Missões', url: '/missoes.html' },
+      { name: 'Lista Negra', url: '/listanegra.html' }
+    ];
+  } else if (faction === 'duty') {
+    links = [
+      { name: 'Painel', url: '/dashboard.html' },
+      { name: 'Caixa', url: '/banco.html' },
+      { name: 'Operadores', url: '/operators.html' },
+      { name: 'Missões', url: '/missoes.html' },
+      { name: 'Arsenal', url: '/arsenal.html' },
+      { name: 'Relatórios', url: '/relatorios.html' },
+      { name: 'Inteligência', url: '/intel.html' },
+      { name: 'Logs', url: '/logs.html' }
+    ];
+  } else if (faction === 'bandits') {
+    links = [
+      { name: 'Painel', url: '/dashboard.html' },
+      { name: 'Caixa', url: '/banco.html' },
+      { name: 'Membros', url: '/membros.html' },
+      { name: 'Negócios', url: '/business.html' },
+      { name: 'Territórios', url: '/territory.html' },
+      { name: 'Informações', url: '/info.html' },
+      { name: 'Registros', url: '/records.html' }
+    ];
+  } else if (faction === 'freedom') {
+    links = [
+      { name: 'Painel', url: '/dashboard.html' },
+      { name: 'Caixa', url: '/banco.html' },
+      { name: 'Membros', url: '/membros.html' },
+      { name: 'Postos', url: '/outposts.html' },
+      { name: 'Missões', url: '/missoes.html' },
+      { name: 'Suprimentos', url: '/supplies.html' },
+      { name: 'Intel', url: '/intel.html' },
+      { name: 'Comunicações', url: '/comms.html' }
+    ];
+  } else if (faction === 'mercenaries') {
+    links = [
+      { name: 'Painel', url: '/dashboard.html' },
+      { name: 'Caixa', url: '/banco.html' },
+      { name: 'Contratos', url: '/contratos.html' },
+      { name: 'Clientes', url: '/clients.html' },
+      { name: 'Operações', url: '/operations.html' },
+      { name: 'Inteligência', url: '/intel.html' },
+      { name: 'Arquivo Confidencial', url: '/archive.html' }
+    ];
+  } else {
+    links = [{ name: 'Painel', url: '/dashboard.html' }];
+  }
+
+  if (role === 'faction_admin' || role === 'admin' || role === 'super_admin') {
+    links.push({ name: 'Equipe', url: '/team.html' });
+  }
+
+  return links;
+}
+
 function buildNav(currentPage) {
   const user = getUser();
   if (!user) return '';
 
-  let links = [];
-  const faction = user.factionSlug;
   const role = user.role;
+  const ctx = getSuperAdminContext();
+  const effectiveFaction = ctx ? ctx.slug : user.factionSlug;
+  let links = [];
 
-  if (role === 'super_admin') {
-    const currentCtx = localStorage.getItem('super_admin_context') || '';
-    links = [];
-    
-    if (currentCtx === '') {
-        links.push({ name: 'Painel Admin', url: '/admin.html' });
-    }
-    
-    links.push(
+  if (role === 'super_admin' && !ctx) {
+    links = [
+      { name: 'Painel Admin', url: '/admin.html' },
       { name: 'Stalkers', url: '/stalkers.html' },
       { name: 'Missões', url: '/missoes.html' },
       { name: 'Itens', url: '/itens.html' },
       { name: 'Estoque', url: '/estoque.html' },
       { name: 'Relatórios', url: '/relatorios.html' },
-      { name: 'Lista Negra', url: '/listanegra.html' }
-    );
-    if (currentCtx === '2' || currentCtx === '') {
-        links.push({ name: 'Enciclopédia', url: '/enciclopedia.html' });
-    }
-    if (currentCtx === '5' || currentCtx === '') {
-        links.push({ name: 'Contratos', url: '/contratos.html' });
-    }
-    links.push({ name: 'Caixa', url: '/banco.html' });
+      { name: 'Lista Negra', url: '/listanegra.html' },
+      { name: 'Enciclopédia', url: '/enciclopedia.html' },
+      { name: 'Contratos', url: '/contratos.html' },
+      { name: 'Caixa', url: '/banco.html' }
+    ];
   } else {
-    if (faction === 'ecologists') {
-      links = [
-        { name: 'Painel', url: '/dashboard.html' },
-        { name: 'Caixa', url: '/banco.html' },
-        { name: 'Stalkers', url: '/stalkers.html' },
-        { name: 'Comércio', url: '/trade.html' },
-        { name: 'Estoque', url: '/estoque.html' },
-        { name: 'Pesquisa', url: '/research.html' },
-        { name: 'Relatórios', url: '/relatorios.html' },
-        { name: 'Histórico', url: '/historico.html' },
-        { name: 'Missões', url: '/missoes.html' },
-        { name: 'Lista Negra', url: '/listanegra.html' }
-      ];
-    } else if (faction === 'duty') {
-      links = [
-        { name: 'Painel', url: '/dashboard.html' },
-        { name: 'Caixa', url: '/banco.html' },
-        { name: 'Operadores', url: '/operators.html' },
-        { name: 'Missões', url: '/missoes.html' },
-        { name: 'Arsenal', url: '/arsenal.html' },
-        { name: 'Relatórios', url: '/relatorios.html' },
-        { name: 'Inteligência', url: '/intel.html' },
-        { name: 'Logs', url: '/logs.html' }
-      ];
-    } else if (faction === 'bandits') {
-      links = [
-        { name: 'Painel', url: '/dashboard.html' },
-        { name: 'Caixa', url: '/banco.html' },
-        { name: 'Membros', url: '/membros.html' },
-        { name: 'Negócios', url: '/business.html' },
-        { name: 'Territórios', url: '/territory.html' },
-        { name: 'Informações', url: '/info.html' },
-        { name: 'Registros', url: '/records.html' }
-      ];
-    } else if (faction === 'freedom') {
-      links = [
-        { name: 'Painel', url: '/dashboard.html' },
-        { name: 'Caixa', url: '/banco.html' },
-        { name: 'Membros', url: '/membros.html' },
-        { name: 'Postos', url: '/outposts.html' },
-        { name: 'Missões', url: '/missoes.html' },
-        { name: 'Suprimentos', url: '/supplies.html' },
-        { name: 'Intel', url: '/intel.html' },
-        { name: 'Comunicações', url: '/comms.html' }
-      ];
-    } else if (faction === 'mercenaries') {
-      links = [
-        { name: 'Painel', url: '/dashboard.html' },
-        { name: 'Caixa', url: '/banco.html' },
-        { name: 'Contratos', url: '/contratos.html' },
-        { name: 'Clientes', url: '/clients.html' },
-        { name: 'Operações', url: '/operations.html' },
-        { name: 'Inteligência', url: '/intel.html' },
-        { name: 'Arquivo Confidencial', url: '/archive.html' }
-      ];
-    } else {
-        links = [
-            { name: 'Painel', url: '/dashboard.html' }
-        ];
-    }
-
-    if (role === 'admin' || role === 'faction_admin') {
-      links.push({ name: 'Equipe', url: '/team.html' });
-    }
+    links = getFactionLinks(effectiveFaction, role);
   }
 
-  let navHtml = `<div class="nav-brand"><span class="faction-logo ${faction}"></span> <span class="username">${escapeHtml(user.username)}</span>`;
-  
+  const logoFaction = effectiveFaction || 'default';
+  let navHtml = `<div class="nav-brand"><span class="faction-logo ${escapeHtml(logoFaction)}"></span> <span class="username">${escapeHtml(user.username)}</span>`;
+
   if (role === 'super_admin') {
-      const currentCtx = localStorage.getItem('super_admin_context') || '';
-      navHtml += `<select onchange="localStorage.setItem('super_admin_context', this.value); window.location.reload();" style="margin-left:15px; padding:2px; font-size:12px; background:#111; color:#fff; border:1px solid #444;">
-          <option value="">🌍 Visão Global</option>
-          <option value="1" ${currentCtx === '1' ? 'selected' : ''}>Duty</option>
-          <option value="2" ${currentCtx === '2' ? 'selected' : ''}>Ecologistas</option>
-          <option value="3" ${currentCtx === '3' ? 'selected' : ''}>Bandidos</option>
-          <option value="4" ${currentCtx === '4' ? 'selected' : ''}>Freedom</option>
-          <option value="5" ${currentCtx === '5' ? 'selected' : ''}>Mercenários</option>
-      </select>`;
+    const currentCtx = ctx ? ctx.id : '';
+    navHtml += `<select onchange="switchSuperAdminContext(this.value)" style="margin-left:15px; padding:2px; font-size:12px; background:#111; color:#fff; border:1px solid #444;">
+        <option value="">🌍 Visão Global</option>
+        <option value="1" ${currentCtx === '1' ? 'selected' : ''}>Duty</option>
+        <option value="2" ${currentCtx === '2' ? 'selected' : ''}>Ecologistas</option>
+        <option value="3" ${currentCtx === '3' ? 'selected' : ''}>Bandidos</option>
+        <option value="4" ${currentCtx === '4' ? 'selected' : ''}>Freedom</option>
+        <option value="5" ${currentCtx === '5' ? 'selected' : ''}>Mercenários</option>
+    </select>`;
+
+    if (ctx) {
+      navHtml += `<span style="margin-left:8px;font-size:11px;color:#7dd3fc;">CONTEXTO: ${escapeHtml(ctx.name.toUpperCase())}</span>`;
+    }
   }
-  
+
   navHtml += `</div><ul class="nav-links" style="list-style:none; display:flex; align-items:center; gap:20px; margin:0; padding:0;">`;
-  
+
   links.forEach(link => {
     const activeClass = currentPage === link.url ? 'active' : '';
     navHtml += `<li><a href="${link.url}" class="${activeClass}">${link.name}</a></li>`;

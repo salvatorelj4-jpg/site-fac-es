@@ -1,198 +1,46 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
-    <title>Administração</title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="style.css">
+<title>Central Administrativa</title>
+<style>
+.admin-shell{max-width:1320px;margin:26px auto 60px}.command-hero{background:linear-gradient(125deg,#03070b,#071421);border:1px solid #17314d;border-top:3px solid #3498db;padding:24px;position:relative;overflow:hidden}.command-hero:after{content:'SYSTEM CONTROL';position:absolute;right:20px;top:18px;color:#12283c;letter-spacing:4px;font-size:.8em}.command-hero h1{margin:0;color:#60a5fa;letter-spacing:2px}.command-hero p{color:#64748b;margin-bottom:0}.overview-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.overview-card{background:#03070b;border:1px solid #17314d;padding:17px;text-align:center;min-height:105px}.overview-card .value{font-size:2.05em;color:#60a5fa;margin-top:7px}.overview-card .label{color:#64748b;font-size:.82em;letter-spacing:1px}.section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:25px 0 12px}.section-head h2{color:#60a5fa;margin:0}.faction-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.faction-command{background:linear-gradient(145deg,#04090f,#020508);border:1px solid #17314d;padding:18px;position:relative}.faction-command:before{content:'';position:absolute;left:0;top:0;width:4px;height:100%;background:var(--faction-color)}.faction-top{display:flex;justify-content:space-between;gap:15px;align-items:flex-start}.faction-name{font-size:1.25em;color:var(--faction-color);letter-spacing:1px}.state{font-size:.75em;border:1px solid;padding:4px 9px}.state.on{color:#4ade80;border-color:#166534}.state.off{color:#f87171;border-color:#7f1d1d}.faction-mainstats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.mini-stat{background:rgba(10,20,30,.65);border:1px solid #102538;padding:9px}.mini-stat b{display:block;color:#e2e8f0;font-size:1.15em}.mini-stat small{color:#64748b}.module-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.module-metric{border-top:1px solid #17314d;padding-top:7px;color:#8aa0b5;font-size:.85em}.module-metric b{color:#cbd5e1}.activity-track{height:7px;background:#07111c;border:1px solid #102538;margin-top:12px}.activity-bar{height:100%;background:var(--faction-color)}.activity-label{display:flex;justify-content:space-between;color:#64748b;font-size:.75em;margin-top:4px}.command-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.command-btn{padding:8px 12px;border:1px solid #294b70;background:#07111c;color:#93c5fd;cursor:pointer;font-family:inherit}.command-btn:hover{background:#0d2032}.split-grid{display:grid;grid-template-columns:1fr 1.35fr;gap:15px}.alert-box,.activity-box{background:#03070b;border:1px solid #17314d;padding:16px}.alert-item{border-left:3px solid #ca8a04;padding:9px 10px;margin:7px 0;background:rgba(202,138,4,.06)}.alert-item.danger{border-color:#dc2626;background:rgba(220,38,38,.06)}.recent-row{display:grid;grid-template-columns:72px 1fr auto;gap:10px;padding:9px 0;border-bottom:1px solid #0f1e2c}.recent-time{color:#64748b;font-size:.8em}.recent-faction{color:#60a5fa;font-size:.8em}.admin-tools{margin-top:24px}.tool-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.tool-tabs button{width:auto;padding:9px 15px}.admin-panel-section{display:none}.admin-panel-section.active{display:block}@media(max-width:980px){.overview-grid{grid-template-columns:repeat(2,1fr)}.faction-grid,.split-grid{grid-template-columns:1fr}}@media(max-width:600px){.faction-mainstats,.module-metrics{grid-template-columns:repeat(2,1fr)}}
+</style>
 </head>
-<body onload="checkAuth(); loadAdminPanel();">
-    <nav id="mainNav"></nav>
-    <div class="container">
-        <div class="card" style="border-top:3px solid var(--accent);">
-            <h2 style="margin-top:0; color:var(--accent);">⚙ PAINEL ADMINISTRATIVO</h2>
-            <p class="text-muted">Gerenciamento central de facções, usuários e auditoria do sistema.</p>
-        </div>
+<body onload="checkAuth(); loadAdminPanel();"><nav id="mainNav"></nav>
+<div class="container admin-shell">
+<div class="command-hero"><div style="color:#3498db;font-size:.8em;letter-spacing:3px">GLOBAL COMMAND / ADMINISTRATOR ACCESS</div><h1>⚙ CENTRAL DE COMANDO ADMINISTRATIVO</h1><p>Visão operacional consolidada das facções, finanças, atividade e alertas do sistema.</p></div>
+<div id="globalOverview" class="overview-grid"></div>
+<div class="section-head"><h2>◈ SITUAÇÃO DAS FACÇÕES</h2><span class="text-muted">Dados atualizados do sistema</span></div>
+<div id="factionCommandGrid" class="faction-grid"></div>
+<div class="split-grid" style="margin-top:18px"><div class="alert-box"><h3 class="text-accent" style="margin-top:0">⚠ ALERTAS ADMINISTRATIVOS</h3><div id="globalAlerts"></div></div><div class="activity-box"><h3 class="text-accent" style="margin-top:0">◷ ATIVIDADE RECENTE GLOBAL</h3><div id="recentActivity"></div></div></div>
 
-        <!-- System Overview -->
-        <div id="overviewCards" class="d-flex gap-1 flex-wrap mb-2"></div>
+<div class="admin-tools">
+<div class="section-head"><h2>⚙ ADMINISTRAÇÃO DO SISTEMA</h2><span class="text-muted">Controles de gerenciamento</span></div>
+<div class="tool-tabs"><button class="btn-secondary" onclick="showAdminSection('factions')">FACÇÕES</button><button class="btn-secondary" onclick="showAdminSection('users')">USUÁRIOS</button><button class="btn-secondary" onclick="showAdminSection('audit')">AUDITORIA</button></div>
 
-        <!-- Faction Management -->
-        <div class="card">
-            <h3 style="color:var(--accent); margin-top:0;">🏴 GERENCIAR FACÇÕES</h3>
-            <div id="factionList"><p class="text-muted">Carregando facções...</p></div>
-        </div>
-
-        <!-- User Management -->
-        <div class="card">
-            <h3 style="color:var(--accent); margin-top:0;">👤 GERENCIAR USUÁRIOS</h3>
-            <div class="d-flex gap-1 mb-1">
-                <button onclick="showCreateUserForm()" class="btn-success w-auto" style="padding:8px 20px;">+ Novo Usuário</button>
-            </div>
-            <div id="createUserForm" class="hidden card" style="border:1px solid var(--accent); margin-bottom:20px;">
-                <h4 style="margin-top:0; color:var(--accent);">Criar Novo Usuário</h4>
-                <div class="d-flex gap-1">
-                    <input type="text" id="newUserName" placeholder="Nome" style="flex:1">
-                    <input type="text" id="newUserUsername" placeholder="Usuário (login)" style="flex:1">
-                </div>
-                <div class="d-flex gap-1">
-                    <input type="password" id="newUserPassword" placeholder="Senha (mín. 6 caracteres)" style="flex:1">
-                    <select id="newUserRole" style="flex:1">
-                        <option value="operator">Operator</option>
-                        <option value="viewer">Viewer</option>
-                        <option value="commander">Commander</option>
-                        <option value="faction_admin">Faction Admin</option>
-                        <option value="super_admin">Super Admin</option>
-                    </select>
-                </div>
-                <select id="newUserFaction">
-                    <option value="">-- Selecionar Facção --</option>
-                </select>
-                <div class="d-flex gap-1">
-                    <button onclick="createNewUser()" class="btn-success">Criar Usuário</button>
-                    <button onclick="document.getElementById('createUserForm').classList.add('hidden')" class="btn-secondary">Cancelar</button>
-                </div>
-            </div>
-            <div id="userList"><p class="text-muted">Carregando usuários...</p></div>
-        </div>
-
-        <!-- Audit Log -->
-        <div class="card">
-            <h3 style="color:var(--accent); margin-top:0;">📋 LOG DE AUDITORIA</h3>
-            <div id="auditLog"><p class="text-muted">Carregando...</p></div>
-        </div>
-    </div>
-    <script src="app.js"></script>
-    <script>
-        async function loadAdminPanel() {
-            const user = getUser();
-            if (!user || user.role !== 'super_admin') {
-                window.location.href = '/dashboard.html';
-                return;
-            }
-            injectNav('/admin.html');
-            await Promise.all([loadOverview(), loadFactionList(), loadUserList(), loadAuditEntries()]);
-        }
-
-        async function loadOverview() {
-            try {
-                const data = await api('/api/admin/overview');
-                const container = document.getElementById('overviewCards');
-                container.innerHTML = [
-                    { label: 'Facções Ativas', value: data.activeFactions, color: 'var(--success)' },
-                    { label: 'Usuários Totais', value: data.totalUsers, color: 'var(--accent)' },
-                    { label: 'Contratos Pendentes', value: data.pendingContracts, color: 'var(--warning)' },
-                    { label: 'Eventos de Auditoria', value: data.auditEntries, color: 'var(--info)' }
-                ].map(s => `<div class="card flex-1" style="min-width:180px; text-align:center;"><h3 class="text-muted" style="margin:0;">${s.label}</h3><h1 style="font-size:2.5em; margin:10px 0; color:${s.color};">${s.value}</h1></div>`).join('');
-            } catch(e) { console.error(e); }
-        }
-
-        async function loadFactionList() {
-            try {
-                const factions = await api('/api/factions');
-                const div = document.getElementById('factionList');
-                div.innerHTML = factions.map(f => {
-                    const theme = JSON.parse(f.theme_config || '{}');
-                    const color = theme.accentColor || '#888';
-                    return `<div class="card" style="border-left:4px solid ${color}; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                        <div>
-                            <strong style="font-size:1.2em; color:${color};">${f.name}</strong>
-                            <span class="text-muted" style="margin-left:10px;">(${f.code})</span><br>
-                            <small class="text-muted">Slug: ${f.slug} | Form Público: ${f.public_form_enabled ? 'Sim' : 'Não'}</small>
-                        </div>
-                        <div class="d-flex gap-1 align-center">
-                            <span class="badge ${f.active ? 'badge-active' : 'badge-rejected'}">${f.active ? 'ATIVA' : 'DESATIVADA'}</span>
-                            <button onclick="toggleFactionActive(${f.id})" class="${f.active ? 'btn-warning' : 'btn-success'} w-auto" style="padding:5px 15px;">${f.active ? 'Desativar' : 'Ativar'}</button>
-                        </div>
-                    </div>`;
-                }).join('');
-                // Also populate faction dropdown for user creation
-                const sel = document.getElementById('newUserFaction');
-                if (sel) sel.innerHTML = '<option value="">-- Sem Facção (Super Admin) --</option>' + factions.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
-            } catch(e) { console.error(e); }
-        }
-
-        async function toggleFactionActive(id) {
-            if (!confirm('Confirmar alteração do status desta facção?')) return;
-            try {
-                await api(`/api/factions/${id}/toggle`, { method: 'PUT' });
-                showSuccess('Status da facção alterado.');
-                await loadFactionList();
-                await loadOverview();
-            } catch(e) { showError('Erro ao alterar facção.'); }
-        }
-
-        function showCreateUserForm() {
-            document.getElementById('createUserForm').classList.remove('hidden');
-        }
-
-        async function createNewUser() {
-            try {
-                const body = {
-                    name: document.getElementById('newUserName').value,
-                    username: document.getElementById('newUserUsername').value,
-                    password: document.getElementById('newUserPassword').value,
-                    role: document.getElementById('newUserRole').value,
-                    factionId: document.getElementById('newUserFaction').value ? parseInt(document.getElementById('newUserFaction').value) : null
-                };
-                await api('/api/users', { method: 'POST', body });
-                showSuccess('Usuário criado com sucesso.');
-                document.getElementById('createUserForm').classList.add('hidden');
-                await loadUserList();
-            } catch(e) { showError(e.message || 'Erro ao criar usuário.'); }
-        }
-
-        async function loadUserList() {
-            try {
-                const users = await api('/api/users');
-                const div = document.getElementById('userList');
-                div.innerHTML = users.map(u => `<div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                    <div>
-                        <strong style="font-size:1.1em;">${escapeHtml(u.name)}</strong> <span class="text-muted">(@${escapeHtml(u.username)})</span><br>
-                        <small class="text-accent">Role: <b>${u.role.toUpperCase()}</b></small>
-                        ${u.faction_name ? `<small class="text-muted"> | Facção: ${escapeHtml(u.faction_name)}</small>` : '<small class="text-muted"> | Super Admin Global</small>'}
-                    </div>
-                    <div class="d-flex gap-1">
-                        <span class="badge ${u.active ? 'badge-active' : 'badge-rejected'}">${u.active ? 'Ativo' : 'Inativo'}</span>
-                        ${u.username !== 'admin' ? `<button onclick="toggleUserActive(${u.id}, ${u.active})" class="${u.active ? 'btn-warning' : 'btn-success'} w-auto" style="padding:5px 10px; font-size:0.85em;">${u.active ? 'Desativar' : 'Ativar'}</button> <button onclick="deleteUser(${u.id})" class="btn-danger w-auto" style="padding:5px 10px; font-size:0.85em;">Excluir</button>` : ''}
-                    </div>
-                </div>`).join('');
-            } catch(e) { console.error(e); }
-        }
-
-        async function toggleUserActive(id, currentActive) {
-            try {
-                await api(`/api/users/${id}`, { method: 'PUT', body: { active: currentActive ? 0 : 1 } });
-                showSuccess('Status alterado.');
-                await loadUserList();
-                await loadOverview();
-            } catch(e) { showError('Erro ao alterar usuário.'); }
-        }
-
-        async function deleteUser(id) {
-            if (!confirm('ATENÇÃO: Deseja apagar este usuário permanentemente?')) return;
-            try {
-                await api(`/api/users/${id}`, { method: 'DELETE' });
-                showSuccess('Usuário apagado com sucesso.');
-                await loadUserList();
-                await loadOverview();
-            } catch(e) { showError('Erro ao apagar usuário.'); }
-        }
-
-        async function loadAuditEntries() {
-            try {
-                const logs = await api('/api/audit?limit=50');
-                const div = document.getElementById('auditLog');
-                if (!logs || logs.length === 0) { div.innerHTML = '<p class="text-muted">Nenhum evento registrado.</p>'; return; }
-                div.innerHTML = logs.map(l => `<div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:8px 0; font-size:0.9em;">
-                    <div class="d-flex justify-between">
-                        <span><b class="text-accent">${escapeHtml(l.action)}</b> ${l.entity ? `em <span class="text-muted">${escapeHtml(l.entity)} #${l.entity_id || ''}</span>` : ''}</span>
-                        <small class="text-muted">${formatDateTime(l.created_at)}</small>
-                    </div>
-                    <small class="text-muted">Usuário: ${l.user_name || 'Sistema'} ${l.faction_name ? `(${l.faction_name})` : ''} | IP: ${l.ip_address || 'N/A'}</small>
-                </div>`).join('');
-            } catch(e) { console.error(e); }
-        }
-    </script>
-</body>
-</html>
+<div id="section-factions" class="admin-panel-section active card"><h3 class="text-accent">🏴 GERENCIAR FACÇÕES</h3><div id="factionList">Carregando...</div></div>
+<div id="section-users" class="admin-panel-section card"><h3 class="text-accent">👤 GERENCIAR USUÁRIOS</h3><button onclick="showCreateUserForm()" class="btn-success w-auto">+ NOVO USUÁRIO</button><div id="createUserForm" class="hidden card" style="border:1px solid var(--accent);margin-top:12px"><h4 class="text-accent">CRIAR NOVO USUÁRIO</h4><div class="d-flex gap-1"><input id="newUserName" placeholder="Nome" style="flex:1"><input id="newUserUsername" placeholder="Usuário (login)" style="flex:1"></div><div class="d-flex gap-1"><input type="password" id="newUserPassword" placeholder="Senha (mín. 6 caracteres)" style="flex:1"><select id="newUserRole" style="flex:1"><option value="operator">Operator</option><option value="viewer">Viewer</option><option value="commander">Commander</option><option value="faction_admin">Faction Admin</option><option value="super_admin">Super Admin</option></select></div><select id="newUserFaction"><option value="">-- Sem Facção (Super Admin) --</option></select><div class="d-flex gap-1"><button onclick="createNewUser()" class="btn-success">CRIAR</button><button onclick="createUserForm.classList.add('hidden')" class="btn-secondary">CANCELAR</button></div></div><div id="userList" style="margin-top:12px">Carregando...</div></div>
+<div id="section-audit" class="admin-panel-section card"><h3 class="text-accent">📋 LOG DE AUDITORIA</h3><div id="auditLog">Carregando...</div></div>
+</div></div>
+<script src="app.js"></script>
+<script>
+let adminDashboard=null;
+function money(v){return Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' RU'}
+function switchToFaction(id){localStorage.setItem('super_admin_context',String(id));window.location.href='/dashboard.html'}
+function showAdminSection(name){document.querySelectorAll('.admin-panel-section').forEach(x=>x.classList.remove('active'));document.getElementById('section-'+name).classList.add('active')}
+async function loadAdminPanel(){const u=getUser();if(!u||u.role!=='super_admin'){location.href='/dashboard.html';return}localStorage.removeItem('super_admin_context');injectNav('/admin.html');await Promise.all([loadGlobalDashboard(),loadFactionList(),loadUserList(),loadAuditEntries()])}
+async function loadGlobalDashboard(){try{const d=await api('/api/admin/global-dashboard');adminDashboard=d;const o=d.overview;globalOverview.innerHTML=[['FACÇÕES ATIVAS',o.activeFactions],['USUÁRIOS ATIVOS',`${o.activeUsers}/${o.totalUsers}`],['SALDO GLOBAL',money(o.totalBalance)],['MISSÕES ABERTAS',o.openMissions],['CONTRATOS NOVOS',o.pendingContracts],['CONTRATOS ACEITOS',o.activeContracts],['AUDITORIA 24H',o.audits24h],['USUÁRIOS INATIVOS',o.inactiveUsers]].map(([l,v])=>`<div class="overview-card"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('');renderFactionCards(d.factions);renderAlerts(d.alerts);renderRecent(d.recentActivity)}catch(e){console.error(e)}}
+function renderFactionCards(rows){factionCommandGrid.innerHTML=rows.map(f=>`<div class="faction-command" style="--faction-color:${f.color}"><div class="faction-top"><div><div class="faction-name">${escapeHtml(f.name.toUpperCase())}</div><div class="text-muted">${f.activeUsers} usuários ativos de ${f.users}</div></div><span class="state ${f.active?'on':'off'}">${f.active?'ONLINE':'OFFLINE'}</span></div><div class="faction-mainstats"><div class="mini-stat"><b>${money(f.balance)}</b><small>Saldo</small></div><div class="mini-stat"><b>${f.missions}</b><small>Missões abertas</small></div><div class="mini-stat"><b>${f.activity7d}</b><small>Eventos / 7 dias</small></div></div><div class="module-metrics">${(f.metrics||[]).slice(0,6).map(m=>`<div class="module-metric"><b>${m.value}</b> ${escapeHtml(m.label)}</div>`).join('')}</div><div class="activity-track"><div class="activity-bar" style="width:${f.activityScore}%"></div></div><div class="activity-label"><span>Índice de atividade</span><span>${f.activityScore}%</span></div><div class="text-muted" style="font-size:.8em;margin-top:8px">Última atividade: ${f.lastActivity?`${escapeHtml(f.lastActivity.user_name||f.lastActivity.username||'Sistema')} • ${formatDateTime(f.lastActivity.created_at)}`:'Nenhuma registrada'}</div><div class="command-actions"><button class="command-btn" onclick="switchToFaction(${f.id})">ABRIR PAINEL</button><button class="command-btn" onclick="localStorage.setItem('super_admin_context','${f.id}');location.href='/team.html'">EQUIPE</button><button class="command-btn" onclick="localStorage.setItem('super_admin_context','${f.id}');location.href='/banco.html'">CAIXA</button></div></div>`).join('')}
+function renderAlerts(rows){globalAlerts.innerHTML=rows&&rows.length?rows.map(a=>`<div class="alert-item ${a.severity==='danger'?'danger':''}"><b>${escapeHtml(a.faction)}</b><br><span>${escapeHtml(a.message)}</span><br><button class="command-btn" style="margin-top:6px" onclick="switchToFaction(${a.factionId})">ABRIR FACÇÃO</button></div>`).join(''):'<p class="text-muted">Nenhum alerta operacional no momento.</p>'}
+function renderRecent(rows){recentActivity.innerHTML=rows&&rows.length?rows.map(r=>`<div class="recent-row"><span class="recent-time">${new Date(r.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span><div><b>${escapeHtml(r.user_name||r.username||'Sistema')}</b> ${escapeHtml(r.action)}${r.entity?` em ${escapeHtml(r.entity)}`:''}</div><span class="recent-faction">${escapeHtml(r.faction_name||'Global')}</span></div>`).join(''):'<p class="text-muted">Nenhuma atividade recente.</p>'}
+async function loadFactionList(){try{const fs=await api('/api/factions');factionList.innerHTML=fs.map(f=>{let t={};try{t=JSON.parse(f.theme_config||'{}')}catch{}const c=t.accentColor||'#888';return`<div class="card" style="border-left:4px solid ${c};display:flex;justify-content:space-between;align-items:center;gap:10px"><div><strong style="color:${c}">${escapeHtml(f.name)}</strong> <span class="text-muted">(${escapeHtml(f.code)})</span><br><small class="text-muted">Slug: ${escapeHtml(f.slug)} | Form público: ${f.public_form_enabled?'Sim':'Não'}</small></div><div class="d-flex gap-1"><span class="badge ${f.active?'badge-active':'badge-rejected'}">${f.active?'ATIVA':'DESATIVADA'}</span><button onclick="toggleFactionActive(${f.id})" class="${f.active?'btn-warning':'btn-success'} w-auto">${f.active?'DESATIVAR':'ATIVAR'}</button></div></div>`}).join('');newUserFaction.innerHTML='<option value="">-- Sem Facção (Super Admin) --</option>'+fs.map(f=>`<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('')}catch(e){console.error(e)}}
+async function toggleFactionActive(id){if(!confirm('Confirmar alteração do status desta facção?'))return;await api(`/api/factions/${id}/toggle`,{method:'PUT'});showSuccess('Status alterado.');await Promise.all([loadFactionList(),loadGlobalDashboard()])}
+function showCreateUserForm(){createUserForm.classList.remove('hidden')}
+async function createNewUser(){try{const body={name:newUserName.value.trim(),username:newUserUsername.value.trim(),password:newUserPassword.value,role:newUserRole.value,factionId:newUserFaction.value?parseInt(newUserFaction.value):null};await api('/api/users',{method:'POST',body});showSuccess('Usuário criado.');createUserForm.classList.add('hidden');await Promise.all([loadUserList(),loadGlobalDashboard()])}catch(e){showError(e.message||'Erro ao criar usuário.')}}
+async function loadUserList(){try{const users=await api('/api/users');userList.innerHTML=users.map(u=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><strong>${escapeHtml(u.name)}</strong> <span class="text-muted">(@${escapeHtml(u.username)})</span><br><small class="text-accent">${escapeHtml(String(u.role).toUpperCase())}</small>${u.faction_name?` <small class="text-muted">| ${escapeHtml(u.faction_name)}</small>`:' <small class="text-muted">| Super Admin Global</small>'}</div><div class="d-flex gap-1"><span class="badge ${u.active?'badge-active':'badge-rejected'}">${u.active?'ATIVO':'INATIVO'}</span>${u.id!==getUser().id?`<button onclick="toggleUserActive(${u.id},${u.active})" class="${u.active?'btn-warning':'btn-success'} w-auto">${u.active?'DESATIVAR':'ATIVAR'}</button><button onclick="deleteUser(${u.id})" class="btn-danger w-auto">EXCLUIR</button>`:''}</div></div>`).join('')}catch(e){console.error(e)}}
+async function toggleUserActive(id,a){await api(`/api/users/${id}`,{method:'PUT',body:{active:a?0:1}});showSuccess('Status alterado.');await Promise.all([loadUserList(),loadGlobalDashboard()])}
+async function deleteUser(id){if(!confirm('Apagar este usuário permanentemente?'))return;await api(`/api/users/${id}`,{method:'DELETE'});showSuccess('Usuário excluído.');await Promise.all([loadUserList(),loadGlobalDashboard()])}
+async function loadAuditEntries(){try{const logs=await api('/api/audit?limit=50');auditLog.innerHTML=logs&&logs.length?logs.map(l=>`<div style="border-bottom:1px solid #102030;padding:8px 0"><div class="d-flex justify-between"><span><b class="text-accent">${escapeHtml(l.action)}</b> ${l.entity?`em ${escapeHtml(l.entity)} #${l.entity_id||''}`:''}</span><small class="text-muted">${formatDateTime(l.created_at)}</small></div><small class="text-muted">Usuário: ${l.actor_type==='system'?'Sistema':l.actor_type==='deleted_user'?`Usuário removido (ID ${l.user_id})`:`${escapeHtml(l.user_name||'Sem nome')} (@${escapeHtml(l.username||'sem-login')})`}${l.faction_name?` | Facção: ${escapeHtml(l.faction_name)}`:''}${l.user_role?` | Cargo: ${escapeHtml(String(l.user_role).toUpperCase())}`:''} | IP: ${escapeHtml(l.ip_address||'N/A')}</small></div>`).join(''):'<p class="text-muted">Nenhum evento registrado.</p>'}catch(e){console.error(e)}}
+</script></body></html>
