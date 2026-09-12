@@ -589,6 +589,8 @@ app.post('/api/users', auth, requireCapability('users:manage'), async (req, res,
             return res.status(403).json({ error: 'Apenas o Super Admin pode criar outro Super Admin.' });
         }
 
+        // Faction Admin is always locked to their own faction.
+        // Any factionId sent manually by the browser is ignored for non-super-admin users.
         const targetFaction = role === 'super_admin'
             ? null
             : (req.user.role === 'super_admin' ? factionId : req.user.factionId);
@@ -649,17 +651,51 @@ app.put('/api/users/:id', auth, requireCapability('users:manage'), async (req, r
 
 app.delete('/api/users/:id', auth, requireCapability('users:manage'), async (req, res, next) => {
     try {
-        const targetId = parseInt(req.params.id);
-        if (targetId === req.user.id) {
-            return res.status(400).json({ error: 'Cannot delete self' });
+        const targetId = parseInt(req.params.id, 10);
+
+        if (!Number.isInteger(targetId)) {
+            return res.status(400).json({ error: 'Usuário inválido.' });
         }
 
-        const targetUser = await dbGet(`SELECT id, username FROM users WHERE id = ?`, [targetId]);
+        if (targetId === req.user.id) {
+            return res.status(400).json({ error: 'Você não pode excluir sua própria conta.' });
+        }
+
+        const targetUser = await dbGet(
+            `SELECT id, username, faction_id, role FROM users WHERE id = ?`,
+            [targetId]
+        );
+
         if (!targetUser) {
-            return res.status(404).json({ error: 'User not found' });
+            return res.status(404).json({ error: 'Usuário não encontrado.' });
+        }
+
+        // Faction Admin may only manage users from their own faction.
+        if (req.user.role !== 'super_admin') {
+            if (!req.user.factionId || targetUser.faction_id !== req.user.factionId) {
+                return res.status(403).json({
+                    error: 'Você só pode excluir usuários da sua própria facção.'
+                });
+            }
+
+            if (targetUser.role === 'super_admin') {
+                return res.status(403).json({
+                    error: 'Faction Admin não pode excluir um Super Admin.'
+                });
+            }
         }
 
         await dbRun(`DELETE FROM users WHERE id = ?`, [targetId]);
+
+        await auditLog({
+            userId: req.user.id,
+            factionId: targetUser.faction_id,
+            action: 'DELETE_USER',
+            entity: 'users',
+            entityId: targetId,
+            metadata: { username: targetUser.username }
+        });
+
         res.json({ success: true, deleted: true });
     } catch (e) {
         next(e);
@@ -700,17 +736,50 @@ app.put('/api/membros/:id', auth, requireCapability('users:manage'), async (req,
 
 app.delete('/api/membros/:id', auth, requireCapability('users:manage'), async (req, res, next) => {
     try {
-        const targetId = parseInt(req.params.id);
-        if (targetId === req.user.id) {
-            return res.status(400).json({ error: 'Cannot delete self' });
+        const targetId = parseInt(req.params.id, 10);
+
+        if (!Number.isInteger(targetId)) {
+            return res.status(400).json({ error: 'Usuário inválido.' });
         }
 
-        const targetUser = await dbGet(`SELECT id FROM users WHERE id = ?`, [targetId]);
+        if (targetId === req.user.id) {
+            return res.status(400).json({ error: 'Você não pode excluir sua própria conta.' });
+        }
+
+        const targetUser = await dbGet(
+            `SELECT id, username, faction_id, role FROM users WHERE id = ?`,
+            [targetId]
+        );
+
         if (!targetUser) {
-            return res.status(404).json({ error: 'User not found' });
+            return res.status(404).json({ error: 'Usuário não encontrado.' });
+        }
+
+        if (req.user.role !== 'super_admin') {
+            if (!req.user.factionId || targetUser.faction_id !== req.user.factionId) {
+                return res.status(403).json({
+                    error: 'Você só pode excluir usuários da sua própria facção.'
+                });
+            }
+
+            if (targetUser.role === 'super_admin') {
+                return res.status(403).json({
+                    error: 'Faction Admin não pode excluir um Super Admin.'
+                });
+            }
         }
 
         await dbRun(`DELETE FROM users WHERE id = ?`, [targetId]);
+
+        await auditLog({
+            userId: req.user.id,
+            factionId: targetUser.faction_id,
+            action: 'DELETE_USER',
+            entity: 'users',
+            entityId: targetId,
+            metadata: { username: targetUser.username, legacyRoute: true }
+        });
+
         res.json({ success: true, deleted: true });
     } catch (e) {
         next(e);
