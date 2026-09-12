@@ -1521,6 +1521,188 @@ app.delete('/api/mercenary/clients/:id/photo', auth, async (req, res, next) => {
     }
 });
 
+// --- MERCENARY TACTICAL INTELLIGENCE ---
+function canCreateMercenaryIntel(req) {
+    return req.user.role === 'super_admin' ||
+        (req.user.factionCode === 'mercenaries' &&
+         ['operator', 'commander', 'faction_admin'].includes(req.user.role));
+}
+
+app.get('/api/mercenary/intel', auth, async (req, res) => {
+    if (!hasMercenaryAccess(req)) {
+        return res.status(403).json({ error: 'Inteligência é exclusiva dos Mercenários.' });
+    }
+
+    const mercFactionId = await getMercenaryFactionId();
+    const rows = await dbAll(
+        `SELECT fr.*, u.name AS created_by_name, u.username AS created_by_username
+         FROM faction_records fr
+         LEFT JOIN users u ON u.id = fr.created_by
+         WHERE fr.faction_id=? AND fr.module_code='intel'
+         ORDER BY fr.id DESC`,
+        [mercFactionId]
+    );
+
+    res.json(rows.map(r => ({
+        ...r,
+        intel_code: `INT-${String(r.id).padStart(4, '0')}`,
+        extra: JSON.parse(r.extra_json || '{}')
+    })));
+});
+
+app.post('/api/mercenary/intel', auth, async (req, res, next) => {
+    try {
+        if (!canCreateMercenaryIntel(req)) {
+            return res.status(403).json({ error: 'Seu cargo não pode criar informes.' });
+        }
+
+        const mercFactionId = await getMercenaryFactionId();
+        const schema = z.object({
+            title: z.string().trim().min(2).max(140),
+            classification: z.enum(['PUBLICO','RESTRITO','CONFIDENCIAL','SIGILOSO']),
+            status: z.enum(['NOVO','ANALISANDO','CONFIRMADO','ARQUIVADO']).optional().default('NOVO'),
+            priority: z.enum(['BAIXA','MEDIA','ALTA','CRITICA']).optional().default('MEDIA'),
+            target: z.string().trim().max(220).optional().default(''),
+            area: z.string().trim().max(180).optional().default(''),
+            reliability: z.string().trim().max(120).optional().default(''),
+            summary: z.string().trim().max(2500).optional().default(''),
+            content: z.string().trim().max(8000).optional().default(''),
+            tacticalNotes: z.string().trim().max(4000).optional().default('')
+        });
+
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: 'Dados do informe inválidos.' });
+        }
+
+        const d = parsed.data;
+        const extra = {
+            priority: d.priority,
+            reliability: d.reliability,
+            summary: d.summary,
+            tacticalNotes: d.tacticalNotes
+        };
+
+        const result = await dbRun(
+            `INSERT INTO faction_records
+             (faction_id,module_code,title,category,status,location,subject,description,extra_json,created_by)
+             VALUES (?, 'intel', ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [mercFactionId, d.title, d.classification, d.status, d.area, d.target,
+             d.content, JSON.stringify(extra), req.user.id]
+        );
+
+        res.status(201).json({
+            success: true,
+            id: result.lastID,
+            intelCode: `INT-${String(result.lastID).padStart(4, '0')}`
+        });
+    } catch (e) { next(e); }
+});
+
+app.put('/api/mercenary/intel/:id', auth, async (req, res, next) => {
+    try {
+        if (!hasMercenaryAccess(req)) {
+            return res.status(403).json({ error: 'Inteligência é exclusiva dos Mercenários.' });
+        }
+
+        const mercFactionId = await getMercenaryFactionId();
+        const current = await dbGet(
+            `SELECT id, created_by FROM faction_records
+             WHERE id=? AND faction_id=? AND module_code='intel'`,
+            [req.params.id, mercFactionId]
+        );
+        if (!current) return res.status(404).json({ error: 'Informe não encontrado.' });
+
+        if (req.user.role !== 'super_admin' && current.created_by !== req.user.id) {
+            return res.status(403).json({ error: 'Apenas quem criou este informe pode editá-lo.' });
+        }
+
+        const schema = z.object({
+            title: z.string().trim().min(2).max(140),
+            classification: z.enum(['PUBLICO','RESTRITO','CONFIDENCIAL','SIGILOSO']),
+            status: z.enum(['NOVO','ANALISANDO','CONFIRMADO','ARQUIVADO']),
+            priority: z.enum(['BAIXA','MEDIA','ALTA','CRITICA']),
+            target: z.string().trim().max(220).optional().default(''),
+            area: z.string().trim().max(180).optional().default(''),
+            reliability: z.string().trim().max(120).optional().default(''),
+            summary: z.string().trim().max(2500).optional().default(''),
+            content: z.string().trim().max(8000).optional().default(''),
+            tacticalNotes: z.string().trim().max(4000).optional().default('')
+        });
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) return res.status(400).json({ error: 'Dados inválidos.' });
+        const d = parsed.data;
+        const extra = {
+            priority: d.priority,
+            reliability: d.reliability,
+            summary: d.summary,
+            tacticalNotes: d.tacticalNotes
+        };
+
+        await dbRun(
+            `UPDATE faction_records
+             SET title=?, category=?, status=?, location=?, subject=?, description=?, extra_json=?, updated_at=CURRENT_TIMESTAMP
+             WHERE id=? AND faction_id=? AND module_code='intel'`,
+            [d.title,d.classification,d.status,d.area,d.target,d.content,JSON.stringify(extra),req.params.id,mercFactionId]
+        );
+
+        res.json({ success: true });
+    } catch (e) { next(e); }
+});
+
+app.post('/api/mercenary/intel/:id/status', auth, async (req, res, next) => {
+    try {
+        if (!hasMercenaryAccess(req)) {
+            return res.status(403).json({ error: 'Inteligência é exclusiva dos Mercenários.' });
+        }
+
+        const mercFactionId = await getMercenaryFactionId();
+        const current = await dbGet(
+            `SELECT id, created_by FROM faction_records
+             WHERE id=? AND faction_id=? AND module_code='intel'`,
+            [req.params.id, mercFactionId]
+        );
+        if (!current) return res.status(404).json({ error: 'Informe não encontrado.' });
+
+        if (req.user.role !== 'super_admin' && current.created_by !== req.user.id) {
+            return res.status(403).json({ error: 'Apenas quem criou este informe pode alterar o status.' });
+        }
+
+        const status = String(req.body.status || '').toUpperCase();
+        const allowed = ['NOVO','ANALISANDO','CONFIRMADO','ARQUIVADO'];
+        if (!allowed.includes(status)) return res.status(400).json({ error: 'Status inválido.' });
+
+        await dbRun(
+            `UPDATE faction_records SET status=?, updated_at=CURRENT_TIMESTAMP
+             WHERE id=? AND faction_id=? AND module_code='intel'`,
+            [status, req.params.id, mercFactionId]
+        );
+        res.json({ success: true, status });
+    } catch (e) { next(e); }
+});
+
+app.delete('/api/mercenary/intel/:id', auth, async (req, res, next) => {
+    try {
+        if (!isMercenaryLeader(req)) {
+            return res.status(403).json({ error: 'Apenas o líder da facção pode excluir informes.' });
+        }
+
+        const mercFactionId = await getMercenaryFactionId();
+        const current = await dbGet(
+            `SELECT id FROM faction_records
+             WHERE id=? AND faction_id=? AND module_code='intel'`,
+            [req.params.id, mercFactionId]
+        );
+        if (!current) return res.status(404).json({ error: 'Informe não encontrado.' });
+
+        await dbRun(
+            `DELETE FROM faction_records WHERE id=? AND faction_id=? AND module_code='intel'`,
+            [req.params.id, mercFactionId]
+        );
+        res.json({ success: true, deleted: true });
+    } catch (e) { next(e); }
+});
+
 // --- MERCENARY CONFIDENTIAL ARCHIVE ---
 function canCreateMercenaryArchive(req) {
     return req.user.role === 'super_admin' ||
@@ -2013,6 +2195,21 @@ app.post('/api/bank', auth, async (req, res) => {
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) {
         return res.status(400).json({ error: 'Valor deve ser maior que zero.' });
+    }
+
+    if (type === 'saida') {
+        const balanceRow = await dbGet(`
+            SELECT COALESCE(SUM(CASE WHEN type = 'entrada' THEN amount ELSE -amount END), 0) AS balance
+            FROM faction_bank_transactions
+            WHERE faction_id = ?
+        `, [fId]);
+
+        const currentBalance = Number(balanceRow?.balance || 0);
+        if (numAmount > currentBalance) {
+            return res.status(400).json({
+                error: `Saldo insuficiente. Saldo atual: ${currentBalance.toFixed(2)} RU.`
+            });
+        }
     }
 
     try {
