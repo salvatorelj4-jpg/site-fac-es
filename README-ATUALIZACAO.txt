@@ -93,3 +93,29 @@ AJUSTE — INTELIGÊNCIA MERCENÁRIA
 - Prioridade Baixa/Média/Alta/Crítica.
 - Criador pode editar e alterar status.
 - Líder/Super Admin pode excluir.
+
+AJUSTE — LOG DE AUDITORIA DO PAINEL ADMINISTRATIVO
+- /api/audit agora relaciona audit_log com users e factions.
+- O painel mostra nome real + @login + facção + cargo de quem executou a ação.
+- "Sistema" aparece somente em ações sem usuário autenticado.
+- Se o usuário responsável já tiver sido excluído, aparece "Usuário removido (ID ...)".
+
+AJUSTE — CONTEXTO DO SUPER ADMIN
+- O seletor de facção do painel administrativo agora controla o menu inteiro.
+- Ao selecionar uma facção, o Super Admin é redirecionado para o Painel daquela facção.
+- O menu passa a mostrar exatamente as abas específicas da facção selecionada.
+- O tema visual também acompanha a facção selecionada.
+- Todas as chamadas /api continuam recebendo faction_id automaticamente.
+- Ao voltar para Visão Global, o sistema retorna ao /admin.html e mostra o menu administrativo global.
+- Em contexto de facção, o Super Admin também recebe a aba Equipe daquela facção.
+
+ATUALIZAÇÃO — VISÃO GLOBAL ADMINISTRATIVA
+- Nova Central de Comando Administrativo.
+- Resumo global de facções, usuários, saldo, missões, contratos e auditoria.
+- Cards operacionais específicos para cada facção.
+- Métricas próprias por facção.
+- Índice de atividade por facção baseado em atividade recente, usuários, missões e saldo.
+- Alertas administrativos automáticos.
+- Atividade recente global com usuário e facção.
+- Atalhos Abrir Painel / Equipe / Caixa por facção.
+- Gerenciamento de Facções, Usuários e Auditoria mantido em seções inferiores.

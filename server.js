@@ -2247,9 +2247,207 @@ app.get('/api/admin/overview', auth, requireCapability('faction:manage'), async 
     });
 });
 
+app.get('/api/admin/global-dashboard', auth, requireCapability('faction:manage'), async (req, res, next) => {
+    try {
+        const factions = await dbAll(`SELECT id, code, name, slug, active, theme_config FROM factions ORDER BY id ASC`);
+
+        const totalUsersRow = await dbGet(`SELECT COUNT(*) AS count FROM users`);
+        const activeUsersRow = await dbGet(`SELECT COUNT(*) AS count FROM users WHERE active = 1`);
+        const inactiveUsersRow = await dbGet(`SELECT COUNT(*) AS count FROM users WHERE active = 0`);
+        const activeFactionsRow = await dbGet(`SELECT COUNT(*) AS count FROM factions WHERE active = 1`);
+        const pendingContractsRow = await dbGet(`SELECT COUNT(*) AS count FROM mercenary_contracts WHERE status = 'NEW'`);
+        const activeContractsRow = await dbGet(`SELECT COUNT(*) AS count FROM mercenary_contracts WHERE status = 'ACCEPTED'`);
+        const audits24hRow = await dbGet(`SELECT COUNT(*) AS count FROM audit_log WHERE created_at >= datetime('now', '-1 day')`);
+        const missionsOpenRow = await dbGet(`SELECT COUNT(*) AS count FROM missoes WHERE status IS NULL OR status != 'ENCERRADA'`);
+
+        const bankGlobal = await dbGet(`
+            SELECT
+                COALESCE(SUM(CASE WHEN type='entrada' THEN amount ELSE 0 END),0) AS entradas,
+                COALESCE(SUM(CASE WHEN type='saida' THEN amount ELSE 0 END),0) AS saidas
+            FROM faction_bank_transactions
+        `);
+
+        const factionCards = [];
+        const alerts = [];
+
+        for (const f of factions) {
+            const users = await dbGet(`SELECT COUNT(*) AS count FROM users WHERE faction_id=?`, [f.id]);
+            const activeUsers = await dbGet(`SELECT COUNT(*) AS count FROM users WHERE faction_id=? AND active=1`, [f.id]);
+            const bank = await dbGet(`
+                SELECT
+                    COALESCE(SUM(CASE WHEN type='entrada' THEN amount ELSE 0 END),0) AS entradas,
+                    COALESCE(SUM(CASE WHEN type='saida' THEN amount ELSE 0 END),0) AS saidas
+                FROM faction_bank_transactions WHERE faction_id=?
+            `, [f.id]);
+            const missions = await dbGet(`SELECT COUNT(*) AS count FROM missoes WHERE faction_id=? AND (status IS NULL OR status != 'ENCERRADA')`, [f.id]);
+            const stalkers = await dbGet(`SELECT COUNT(*) AS count FROM stalkers WHERE faction_id=?`, [f.id]);
+            const items = await dbGet(`SELECT COUNT(*) AS count FROM itens WHERE faction_id=?`, [f.id]);
+            const activity7d = await dbGet(`SELECT COUNT(*) AS count FROM audit_log WHERE faction_id=? AND created_at >= datetime('now','-7 day')`, [f.id]);
+            const lastActivity = await dbGet(`
+                SELECT a.action, a.created_at, u.name AS user_name, u.username
+                FROM audit_log a
+                LEFT JOIN users u ON u.id=a.user_id
+                WHERE a.faction_id=?
+                ORDER BY a.created_at DESC, a.id DESC LIMIT 1
+            `, [f.id]);
+
+            const moduleRows = await dbAll(`
+                SELECT module_code, status, COUNT(*) AS count
+                FROM faction_records
+                WHERE faction_id=?
+                GROUP BY module_code, status
+            `, [f.id]);
+
+            const moduleCounts = {};
+            for (const r of moduleRows) {
+                if (!moduleCounts[r.module_code]) moduleCounts[r.module_code] = { total:0, statuses:{} };
+                moduleCounts[r.module_code].total += Number(r.count || 0);
+                moduleCounts[r.module_code].statuses[r.status || 'sem_status'] = Number(r.count || 0);
+            }
+
+            const balance = Number(bank.entradas || 0) - Number(bank.saidas || 0);
+            const metrics = [];
+
+            if (f.code === 'mercenaries') {
+                const contracts = await dbGet(`
+                    SELECT
+                        SUM(CASE WHEN status='NEW' THEN 1 ELSE 0 END) AS novos,
+                        SUM(CASE WHEN status='ACCEPTED' THEN 1 ELSE 0 END) AS aceitos,
+                        SUM(CASE WHEN status='SUSPENDED' THEN 1 ELSE 0 END) AS suspensos,
+                        SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END) AS concluidos
+                    FROM mercenary_contracts
+                `);
+                metrics.push(
+                    { label:'Contratos novos', value:Number(contracts.novos || 0) },
+                    { label:'Contratos aceitos', value:Number(contracts.aceitos || 0) },
+                    { label:'Operações', value:moduleCounts.operations?.total || 0 },
+                    { label:'Clientes', value:moduleCounts.clients?.total || 0 },
+                    { label:'Inteligência', value:moduleCounts.intel?.total || 0 },
+                    { label:'Dossiês', value:moduleCounts.archive?.total || 0 }
+                );
+                if (Number(contracts.novos || 0) > 0) alerts.push({ severity:'warning', factionId:f.id, faction:f.name, message:`${contracts.novos} contrato(s) novo(s) aguardando análise.` });
+            } else if (f.code === 'bandits') {
+                metrics.push(
+                    { label:'Membros', value:users.count },
+                    { label:'Negócios', value:moduleCounts.business?.total || 0 },
+                    { label:'Territórios', value:moduleCounts.territory?.total || 0 },
+                    { label:'Informações', value:moduleCounts.info?.total || 0 },
+                    { label:'Registros', value:moduleCounts.records?.total || 0 },
+                    { label:'Missões', value:missions.count }
+                );
+            } else if (f.code === 'ecologists') {
+                const experiments = await dbGet(`SELECT COUNT(*) AS count FROM rp_experiments WHERE faction_id=?`, [f.id]);
+                const risky = await dbGet(`SELECT COUNT(*) AS count FROM rp_experiments WHERE faction_id=? AND risk_level IN ('alto','critico') AND status NOT IN ('concluido','falhou')`, [f.id]);
+                metrics.push(
+                    { label:'Stalkers', value:stalkers.count },
+                    { label:'Experimentos', value:experiments.count },
+                    { label:'Comércio', value:moduleCounts.trade?.total || 0 },
+                    { label:'Itens/Estoque', value:items.count },
+                    { label:'Missões', value:missions.count },
+                    { label:'Pesquisas críticas', value:risky.count }
+                );
+                if (Number(risky.count || 0) > 0) alerts.push({ severity:'danger', factionId:f.id, faction:f.name, message:`${risky.count} experimento(s) de risco alto/crítico em aberto.` });
+            } else if (f.code === 'freedom') {
+                metrics.push(
+                    { label:'Membros', value:users.count },
+                    { label:'Postos', value:moduleCounts.outposts?.total || 0 },
+                    { label:'Suprimentos', value:moduleCounts.supplies?.total || 0 },
+                    { label:'Intel', value:moduleCounts.intel?.total || 0 },
+                    { label:'Comunicações', value:moduleCounts.comms?.total || 0 },
+                    { label:'Missões', value:missions.count }
+                );
+            } else if (f.code === 'duty') {
+                metrics.push(
+                    { label:'Operadores', value:moduleCounts.operators?.total || users.count },
+                    { label:'Arsenal', value:moduleCounts.arsenal?.total || 0 },
+                    { label:'Inteligência', value:moduleCounts.intel?.total || 0 },
+                    { label:'Logs', value:moduleCounts.logs?.total || 0 },
+                    { label:'Itens', value:items.count },
+                    { label:'Missões', value:missions.count }
+                );
+            }
+
+            if (balance <= 0) alerts.push({ severity:'warning', factionId:f.id, faction:f.name, message:`Saldo atual em ${balance.toFixed(2)} RU.` });
+            if (Number(activeUsers.count || 0) === 0) alerts.push({ severity:'danger', factionId:f.id, faction:f.name, message:'Nenhum usuário ativo nesta facção.' });
+            if (!f.active) alerts.push({ severity:'danger', factionId:f.id, faction:f.name, message:'Facção desativada.' });
+
+            const theme = (() => { try { return JSON.parse(f.theme_config || '{}'); } catch { return {}; } })();
+            const activityScore = Math.min(100, Math.round(
+                Math.min(Number(activity7d.count || 0) * 4, 40) +
+                Math.min(Number(activeUsers.count || 0) * 8, 32) +
+                Math.min(Number(missions.count || 0) * 4, 16) +
+                (balance > 0 ? 12 : 0)
+            ));
+
+            factionCards.push({
+                id:f.id, code:f.code, name:f.name, slug:f.slug, active:!!f.active,
+                color:theme.accentColor || '#3498db',
+                users:Number(users.count || 0), activeUsers:Number(activeUsers.count || 0),
+                balance, missions:Number(missions.count || 0), stalkers:Number(stalkers.count || 0), items:Number(items.count || 0),
+                activity7d:Number(activity7d.count || 0), activityScore,
+                lastActivity:lastActivity || null,
+                metrics
+            });
+        }
+
+        const recentActivity = await dbAll(`
+            SELECT a.id, a.action, a.entity, a.entity_id, a.created_at,
+                   u.name AS user_name, u.username,
+                   f.id AS faction_id, f.name AS faction_name, f.code AS faction_code
+            FROM audit_log a
+            LEFT JOIN users u ON u.id=a.user_id
+            LEFT JOIN factions f ON f.id=a.faction_id
+            ORDER BY a.created_at DESC, a.id DESC LIMIT 12
+        `);
+
+        res.json({
+            overview:{
+                activeFactions:Number(activeFactionsRow.count || 0),
+                totalUsers:Number(totalUsersRow.count || 0),
+                activeUsers:Number(activeUsersRow.count || 0),
+                inactiveUsers:Number(inactiveUsersRow.count || 0),
+                pendingContracts:Number(pendingContractsRow.count || 0),
+                activeContracts:Number(activeContractsRow.count || 0),
+                openMissions:Number(missionsOpenRow.count || 0),
+                audits24h:Number(audits24hRow.count || 0),
+                totalBalance:Number(bankGlobal.entradas || 0)-Number(bankGlobal.saidas || 0),
+                totalEntradas:Number(bankGlobal.entradas || 0),
+                totalSaidas:Number(bankGlobal.saidas || 0)
+            },
+            factions:factionCards,
+            alerts:alerts.slice(0,12),
+            recentActivity
+        });
+    } catch (e) { next(e); }
+});
+
 app.get('/api/audit', auth, requireCapability('audit:read'), async (req, res) => {
     const fId = getFactionScope(req);
-    const rows = await dbAll(`SELECT * FROM audit_log ${fId ? 'WHERE faction_id = ?' : ''} ORDER BY created_at DESC LIMIT 100`, fId ? [fId] : []);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 500);
+
+    const where = fId ? 'WHERE a.faction_id = ?' : '';
+    const params = fId ? [fId, limit] : [limit];
+
+    const rows = await dbAll(`
+        SELECT
+            a.*,
+            u.name AS user_name,
+            u.username AS username,
+            u.role AS user_role,
+            f.name AS faction_name,
+            CASE
+                WHEN a.user_id IS NULL THEN 'system'
+                WHEN u.id IS NULL THEN 'deleted_user'
+                ELSE 'user'
+            END AS actor_type
+        FROM audit_log a
+        LEFT JOIN users u ON u.id = a.user_id
+        LEFT JOIN factions f ON f.id = a.faction_id
+        ${where}
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT ?
+    `, params);
+
     res.json(rows);
 });
 
