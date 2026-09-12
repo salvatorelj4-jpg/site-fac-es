@@ -100,7 +100,7 @@ async function sfDeleteMission(id){if(!sfCanDelete())return showError('Somente o
 
 async function sfTeam(){sfInit();const f=sfCfg();teamTitle.textContent=window.SF_PAGE.title;teamSub.textContent=window.SF_PAGE.sub;if(!sfLeader())newUserBtn.style.display='none';await sfLoadTeam()}
 async function sfLoadTeam(){const rows=await api('/api/users')||[];teamList.innerHTML=rows.map(u=>`<div class="sf-card"><h3>${sfEsc(u.name)} <small>@${sfEsc(u.username)}</small></h3><span class="sf-tag">${sfEsc(u.role)}</span><span class="sf-tag">${u.active?'ATIVO':'INATIVO'}</span><div class="sf-meta">Último acesso: ${sfDate(u.last_login_at)}</div></div>`).join('')||'<div class="sf-empty">Nenhum membro.</div>'}
-async function sfCreateUser(){const body={name:uName.value.trim(),username:uLogin.value.trim(),password:uPass.value,role:uRole.value,factionId:sfUser().factionId};if(body.name.length<2||body.username.length<3||body.password.length<6)return showError('Confira nome, login e senha.');await api('/api/users',{method:'POST',body});showSuccess('Membro adicionado.');userForm.classList.add('hidden');sfLoadTeam()}
+async function sfCreateUser(){const me=sfUser();const ctx=(typeof getSuperAdminContext==='function'?getSuperAdminContext():null);const body={name:uName.value.trim(),username:uLogin.value.trim(),password:uPass.value,role:uRole.value,factionId:me.role==='super_admin'?(ctx?Number(ctx.id):null):me.factionId};if(body.name.length<2||body.username.length<3||body.password.length<6)return showError('Confira nome, login e senha.');await api('/api/users',{method:'POST',body});showSuccess('Membro adicionado.');userForm.reset();userForm.classList.add('hidden');await sfLoadTeam()}
 
 
 let dutyStalkerRows=[];

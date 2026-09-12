@@ -68,7 +68,7 @@ async function createUserLocal(){
  if(username.length<3)return showError('Login precisa ter pelo menos 3 caracteres.');
  if(password.length<6)return showError('Senha precisa ter pelo menos 6 caracteres.');
  try{
-   await api('/api/users',{method:'POST',body:{name,username,password,role,factionId:me().factionId}});
+   const user=me();const ctx=(typeof getSuperAdminContext==='function'?getSuperAdminContext():null);const factionId=user.role==='super_admin'?(ctx?Number(ctx.id):null):user.factionId;await api('/api/users',{method:'POST',body:{name,username,password,role,factionId}});
    showSuccess('Usuário criado.');closeUserForm();loadTeam();
  }catch(e){console.error(e)}
 }
