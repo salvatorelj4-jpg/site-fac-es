@@ -37,7 +37,8 @@ function getEffectiveFactionSlug() {
 function switchSuperAdminContext(value) {
   if (value) {
     localStorage.setItem('super_admin_context', value);
-    window.location.href = '/dashboard.html';
+    const landing = {'1':'/duty-dashboard.html','2':'/eco-dashboard.html','3':'/bandit-dashboard.html','4':'/freedom-dashboard.html','5':'/dashboard.html'};
+    window.location.href = landing[value] || '/dashboard.html';
   } else {
     localStorage.removeItem('super_admin_context');
     window.location.href = '/admin.html';
@@ -270,71 +271,28 @@ function getThemeClass(slug) {
 // ==========================================
 
 function getFactionLinks(faction, role = null) {
-  let links = [];
-
-  if (faction === 'ecologists') {
-    links = [
-      { name: 'Painel', url: '/dashboard.html' },
-      { name: 'Caixa', url: '/banco.html' },
-      { name: 'Stalkers', url: '/stalkers.html' },
-      { name: 'Comércio', url: '/trade.html' },
-      { name: 'Estoque', url: '/estoque.html' },
-      { name: 'Pesquisa', url: '/research.html' },
-      { name: 'Relatórios', url: '/relatorios.html' },
-      { name: 'Histórico', url: '/historico.html' },
-      { name: 'Missões', url: '/missoes.html' },
-      { name: 'Lista Negra', url: '/listanegra.html' }
-    ];
-  } else if (faction === 'duty') {
-    links = [
-      { name: 'Painel', url: '/dashboard.html' },
-      { name: 'Caixa', url: '/banco.html' },
-      { name: 'Operadores', url: '/operators.html' },
-      { name: 'Missões', url: '/missoes.html' },
-      { name: 'Arsenal', url: '/arsenal.html' },
-      { name: 'Relatórios', url: '/relatorios.html' },
-      { name: 'Inteligência', url: '/intel.html' },
-      { name: 'Logs', url: '/logs.html' }
-    ];
-  } else if (faction === 'bandits') {
-    links = [
-      { name: 'Painel', url: '/dashboard.html' },
-      { name: 'Caixa', url: '/banco.html' },
-      { name: 'Membros', url: '/membros.html' },
-      { name: 'Negócios', url: '/business.html' },
-      { name: 'Territórios', url: '/territory.html' },
-      { name: 'Informações', url: '/info.html' },
-      { name: 'Registros', url: '/records.html' }
-    ];
-  } else if (faction === 'freedom') {
-    links = [
-      { name: 'Painel', url: '/dashboard.html' },
-      { name: 'Caixa', url: '/banco.html' },
-      { name: 'Membros', url: '/membros.html' },
-      { name: 'Postos', url: '/outposts.html' },
-      { name: 'Missões', url: '/missoes.html' },
-      { name: 'Suprimentos', url: '/supplies.html' },
-      { name: 'Intel', url: '/intel.html' },
-      { name: 'Comunicações', url: '/comms.html' }
-    ];
-  } else if (faction === 'mercenaries') {
-    links = [
-      { name: 'Painel', url: '/dashboard.html' },
-      { name: 'Caixa', url: '/banco.html' },
-      { name: 'Contratos', url: '/contratos.html' },
-      { name: 'Clientes', url: '/clients.html' },
-      { name: 'Operações', url: '/operations.html' },
-      { name: 'Inteligência', url: '/intel.html' },
-      { name: 'Arquivo Confidencial', url: '/archive.html' }
-    ];
-  } else {
-    links = [{ name: 'Painel', url: '/dashboard.html' }];
-  }
-
+  const maps = {
+    duty: [
+      ['Comando','/duty-dashboard.html'],['Tesouraria','/duty-bank.html'],['Efetivo','/duty-operators.html'],['Ordens','/duty-missions.html'],['Arsenal','/duty-arsenal.html'],['Relatórios','/duty-reports.html'],['Inteligência','/duty-intel.html'],['Disciplina','/duty-logs.html']
+    ],
+    ecologists: [
+      ['Bunker','/eco-dashboard.html'],['Finanças','/eco-bank.html'],['Stalkers','/eco-stalkers.html'],['Aquisições','/eco-trade.html'],['Depósito','/eco-inventory.html'],['Laboratório','/eco-research.html'],['Relatórios','/eco-reports.html'],['Arquivos','/eco-history.html'],['Expedições','/eco-expeditions.html'],['Risco Biológico','/eco-blacklist.html']
+    ],
+    bandits: [
+      ['Covil','/bandit-dashboard.html'],['Caixa Preto','/bandit-bank.html'],['Gangue','/bandit-members.html'],['Negócios','/bandit-business.html'],['Territórios','/bandit-territory.html'],['Informantes','/bandit-info.html'],['Livro Negro','/bandit-records.html']
+    ],
+    freedom: [
+      ['Base Livre','/freedom-dashboard.html'],['Fundo Comum','/freedom-bank.html'],['Companheiros','/freedom-members.html'],['Postos Livres','/freedom-outposts.html'],['Incursões','/freedom-missions.html'],['Suprimentos','/freedom-supplies.html'],['Reconhecimento','/freedom-intel.html'],['Rádio Livre','/freedom-comms.html']
+    ],
+    mercenaries: [
+      ['Painel','/dashboard.html'],['Caixa','/banco.html'],['Contratos','/contratos.html'],['Clientes','/clients.html'],['Operações','/operations.html'],['Inteligência','/intel.html'],['Arquivo Confidencial','/archive.html']
+    ]
+  };
+  let links=(maps[faction]||[['Painel','/dashboard.html']]).map(([name,url])=>({name,url}));
   if (role === 'faction_admin' || role === 'admin' || role === 'super_admin') {
-    links.push({ name: 'Equipe', url: '/team.html' });
+    const teams={duty:'/duty-team.html',ecologists:'/eco-team.html',bandits:'/bandit-team.html',freedom:'/freedom-team.html',mercenaries:'/team.html'};
+    links.push({name:'Equipe',url:teams[faction]||'/team.html'});
   }
-
   return links;
 }
 
