@@ -35,3 +35,9 @@ Antes de publicar:
 - altere `ADMIN_PASSWORD`;
 - configure `ALLOWED_ORIGINS` com o domínio público real;
 - nunca envie o `.env` original para terceiros.
+
+
+V23 — reset rápido em cada aba de facção
+- Em qualquer aba de Duty, Ecologistas, Bandidos, Freedom e Mercenários, quando o usuário for Super Admin e estiver dentro do contexto da facção, aparece o botão 'Resetar Facção' no menu superior.
+- O botão chama o reset da própria facção, com escolha entre reset operacional e reset total.
+- Nenhum outro cargo consegue ver ou usar esse botão.

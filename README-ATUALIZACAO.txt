@@ -167,3 +167,9 @@ V12 — CLIENTES MERCENÁRIOS
 - Exclusão gera evento DELETE_MERCENARY_CLIENT no Log de Auditoria.
 - Upload/troca de foto também registra UPDATE_MERCENARY_CLIENT_PHOTO no log.
 - Ajustado espaçamento superior da tela de Clientes para o menu não cobrir o cabeçalho/conteúdo.
+
+
+V23 — reset rápido em cada aba de facção
+- Em qualquer aba de Duty, Ecologistas, Bandidos, Freedom e Mercenários, quando o usuário for Super Admin e estiver dentro do contexto da facção, aparece o botão 'Resetar Facção' no menu superior.
+- O botão chama o reset da própria facção, com escolha entre reset operacional e reset total.
+- Nenhum outro cargo consegue ver ou usar esse botão.
