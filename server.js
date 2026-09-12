@@ -566,13 +566,62 @@ app.get('/api/users', auth, async (req, res) => {
 
 app.post('/api/users', auth, requireCapability('users:manage'), async (req, res, next) => {
     try {
-        const { username, password, name, role, factionId } = req.body;
-        const targetFaction = req.user.role === 'super_admin' ? factionId : req.user.factionId;
+        const schema = z.object({
+            username: z.string().trim().min(3).max(50),
+            password: z.string().min(6).max(72),
+            name: z.string().trim().min(2).max(100),
+            role: z.enum(['viewer', 'operator', 'commander', 'faction_admin', 'super_admin']),
+            factionId: z.number().int().positive().nullable().optional()
+        });
+
+        const parsed = schema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({
+                error: 'Dados do usuário inválidos.',
+                details: parsed.error.issues.map(issue => issue.message)
+            });
+        }
+
+        const { username, password, name, role, factionId = null } = parsed.data;
+
+        // Only the global super admin can create another super admin.
+        if (role === 'super_admin' && req.user.role !== 'super_admin') {
+            return res.status(403).json({ error: 'Apenas o Super Admin pode criar outro Super Admin.' });
+        }
+
+        const targetFaction = role === 'super_admin'
+            ? null
+            : (req.user.role === 'super_admin' ? factionId : req.user.factionId);
+
+        if (role !== 'super_admin' && !targetFaction) {
+            return res.status(400).json({ error: 'Selecione uma facção para este usuário.' });
+        }
+
+        const duplicate = await dbGet(
+            `SELECT id FROM users WHERE username = ? COLLATE NOCASE LIMIT 1`,
+            [username]
+        );
+        if (duplicate) {
+            return res.status(409).json({ error: 'Este nome de usuário já está em uso.' });
+        }
+
         const hash = await bcrypt.hash(password, 10);
-        const result = await dbRun(`INSERT INTO users (username, password_hash, name, faction_id, role) VALUES (?, ?, ?, ?, ?)`,
-            [username, hash, name, targetFaction, role]);
-        await auditLog({ userId: req.user.id, factionId: targetFaction, action: 'CREATE_USER', entityId: result.lastID });
-        res.json({ success: true, id: result.lastID });
+        const result = await dbRun(
+            `INSERT INTO users (username, password_hash, name, faction_id, role, active)
+             VALUES (?, ?, ?, ?, ?, 1)`,
+            [username, hash, name, targetFaction, role]
+        );
+
+        await auditLog({
+            userId: req.user.id,
+            factionId: targetFaction,
+            action: 'CREATE_USER',
+            entity: 'users',
+            entityId: result.lastID,
+            metadata: { username, role }
+        });
+
+        res.status(201).json({ success: true, id: result.lastID });
     } catch (e) { next(e); }
 });
 
