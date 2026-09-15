@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { ALLOWLIST, SftpBridgeAgent, TARGET_KEYS, safeRemotePath, sha256, validateReleaseId } from '../bridge/sftp-agent.mjs';
 
 const token = 'x'.repeat(48);
@@ -20,18 +23,18 @@ class MockSftp {
   async delete(p) { this.ops.push(['delete', p]); this.files.delete(p); }
 }
 
-function mockFetch({ badHash = false } = {}) {
+function mockFetch({ badHash = false, heartbeatFailure = false } = {}) {
   return async (url, options = {}) => {
     const u = new URL(url);
     if (u.pathname.endsWith('/releases/latest')) return { ok: true, json: async () => ({ releaseId: 'rel-1' }) };
     if (u.pathname.endsWith('/manifest')) return { ok: true, json: async () => badHash ? { files: manifest.files.map((x, i) => i === 0 ? { ...x, sha256: 'BAD' } : x) } : manifest };
     if (u.pathname.includes('/files/')) { const key = decodeURIComponent(u.pathname.split('/files/')[1]); const relative = Object.hasOwn(TARGET_KEYS, key) ? TARGET_KEYS[key] : key; return { ok: true, arrayBuffer: async () => content[relative] }; }
-    if (u.pathname.endsWith('/heartbeat')) return { ok: true, json: async () => ({ ok: true, body: JSON.parse(options.body) }) };
+    if (u.pathname.endsWith('/heartbeat')) { if (heartbeatFailure) return { ok: false, status: 503, json: async () => ({}) }; return { ok: true, json: async () => ({ ok: true, body: JSON.parse(options.body) }) }; }
     throw new Error(`UNEXPECTED_FETCH:${u.pathname}`);
   };
 }
 
-function agent(transport, extra = {}) { return new SftpBridgeAgent({ apiBase: 'https://example.test', token, transport, hostFingerprint: 'SHA256:test', fetchImpl: mockFetch(), ...extra }); }
+function agent(transport, extra = {}) { return new SftpBridgeAgent({ apiBase: 'https://example.test', token, transport, hostFingerprint: 'SHA256:test', fetchImpl: mockFetch(), stateStore: {}, ...extra }); }
 
 test('SFTP connect and remote root discovery', async () => { const t = new MockSftp(); const result = await agent(t).connect(); assert.equal(result.instanceExists, true); assert.equal(result.root, '/instance/OblivionControl'); });
 test('allowlist and traversal are fail-closed', async () => { assert.throws(() => new SftpBridgeAgent({ apiBase: 'x', token, transport: new MockSftp(), remoteRoot: '/instance/../evil', fetchImpl: mockFetch() }), /REMOTE_ROOT_INVALID|REMOTE_ROOT_OUTSIDE_INSTANCE/); assert.throws(() => safeRemotePath('/instance/OblivionControl', '../evil.json'), /REMOTE_PATH_NOT_ALLOWLISTED/); assert.throws(() => safeRemotePath('/instance/OblivionControl', 'players.db'), /REMOTE_PATH_NOT_ALLOWLISTED/); });
@@ -45,3 +48,6 @@ test('operations close after success, apply error, connect error and rollback er
 test('release ids reject traversal, absolute paths, invalid chars and oversized values', () => { for (const value of ['../x', '..\\x', '/absolute', 'a/b', 'a\\b', 'a%b', '', 'a'.repeat(97)]) assert.throws(() => validateReleaseId(value), /RELEASE_ID_INVALID/); });
 test('concurrent apply is rejected and replay does not write', async () => { const t = new MockSftp(); const a = agent(t); const first = a.applyLatest(); await assert.rejects(() => a.applyLatest(), /APPLY_ALREADY_IN_PROGRESS/); await first; const puts = t.ops.filter((x) => x[0] === 'put').length; const replay = await a.applyLatest(); assert.equal(replay.status, 'ALREADY_APPLIED'); assert.equal(t.ops.filter((x) => x[0] === 'put').length, puts); });
 test('failed apply releases lock and cleans temporary files', async () => { const t = new MockSftp(); t.failRenameAt = 1; const a = agent(t); await assert.rejects(() => a.applyLatest()); assert.equal(a.applyState, 'IDLE'); assert.equal([...t.files.keys()].some((p) => p.includes('.tmp-') || p.includes('.rollback-tmp-')), false); t.failRenameAt = null; assert.equal((await a.applyLatest()).status, 'APPLIED'); });
+test('persistent state writes and reloads across bridge instances', async () => { const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'obc-state-')); const stateFile = path.join(directory, 'oblivion-control', 'sftp-bridge-state.json'); const t = new MockSftp(); const first = new SftpBridgeAgent({ apiBase: 'https://example.test', token, transport: t, hostFingerprint: 'SHA256:test', fetchImpl: mockFetch(), stateFile, serverId: 'test-server' }); assert.equal((await first.applyLatest()).status, 'APPLIED'); const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8')); assert.equal(saved.currentReleaseId, 'rel-1'); assert.equal(saved.status, 'APPLIED'); const second = new SftpBridgeAgent({ apiBase: 'https://example.test', token, transport: t, hostFingerprint: 'SHA256:test', fetchImpl: mockFetch(), stateFile, serverId: 'test-server' }); const puts = t.ops.filter((x) => x[0] === 'put').length; assert.equal((await second.applyLatest()).status, 'ALREADY_APPLIED'); assert.equal(t.ops.filter((x) => x[0] === 'put').length, puts); });
+test('corrupt persistent state fails closed and state contains no secrets', () => { const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'obc-state-corrupt-')); const stateFile = path.join(directory, 'state.json'); fs.writeFileSync(stateFile, '{not-json'); assert.throws(() => new SftpBridgeAgent({ apiBase: 'x', token, transport: new MockSftp(), fetchImpl: mockFetch(), stateFile }), /SFTP_STATE_CORRUPT/); });
+test('successful apply with heartbeat failure does not reapply on retry', async () => { const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'obc-state-heartbeat-')); const stateFile = path.join(directory, 'state.json'); const t = new MockSftp(); const first = new SftpBridgeAgent({ apiBase: 'https://example.test', token, transport: t, hostFingerprint: 'SHA256:test', fetchImpl: mockFetch({ heartbeatFailure: true }), stateFile }); assert.equal((await first.applyLatest()).status, 'APPLIED_HEARTBEAT_PENDING'); const saved = JSON.parse(fs.readFileSync(stateFile, 'utf8')); assert.equal(saved.status, 'APPLIED_HEARTBEAT_PENDING'); const puts = t.ops.filter((x) => x[0] === 'put').length; const second = new SftpBridgeAgent({ apiBase: 'https://example.test', token, transport: t, hostFingerprint: 'SHA256:test', fetchImpl: mockFetch({ heartbeatFailure: true }), stateFile }); assert.equal((await second.applyLatest()).status, 'APPLIED_HEARTBEAT_PENDING'); assert.equal(t.ops.filter((x) => x[0] === 'put').length, puts); assert.equal(JSON.stringify(saved).includes(token), false); });

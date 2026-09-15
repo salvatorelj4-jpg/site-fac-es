@@ -8,6 +8,8 @@ Set these only in the Wispbyte environment (never in GitHub, a ZIP, logs, or the
 
 Apply downloads the release through the authenticated bridge API, validates manifest size and SHA-256, snapshots the current remote bytes, uploads a release-specific temporary file, validates it, and atomically renames it. A per-agent lock rejects concurrent applies and an already-applied release is a no-op. Any failure restores files already changed and removes temporary files. Rollback restores the exact backup bytes and emits a heartbeat. Every high-level operation closes SFTP in `finally`, including partial connection failures. Real credentials and Qonzer are intentionally not exercised by this change.
 
+The bridge persists only operational state (server ID, release ID, status, and timestamps) at `DATA_DIR/oblivion-control/sftp-bridge-state.json`. It writes through a temporary file with `fsync` and atomic rename, never stores credentials, and fails closed if the state JSON is corrupt. A heartbeat failure after a confirmed apply yields `APPLIED_HEARTBEAT_PENDING`; a retry sends the heartbeat without rewriting remote files. The in-memory apply lock assumes the Wispbyte deployment runs one Node process; persistent state provides restart-safe replay protection.
+
 ## Local validation
 
 Run `node --test tests/sftp-agent.test.mjs` and `node --check server.js`. The tests use an in-memory SFTP fixture and cover discovery, allowlist/traversal rejection, backup, temporary upload, atomic rename, SHA validation, partial-failure rollback, byte-for-byte rollback, and dry-run no-write behavior.

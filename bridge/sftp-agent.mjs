@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 
 const posix = path.posix;
@@ -30,6 +31,7 @@ const responseJson = async (response) => {
 };
 
 const RELEASE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/;
+const STATE_STATUSES = new Set(['IDLE', 'APPLIED', 'APPLIED_HEARTBEAT_PENDING', 'ROLLED_BACK', 'ROLLED_BACK_HEARTBEAT_PENDING']);
 
 export function validateReleaseId(value) {
   if (typeof value !== 'string' || !RELEASE_ID_RE.test(value) || value.includes('%') || value.includes('\0')) throw new Error('RELEASE_ID_INVALID');
@@ -39,6 +41,42 @@ export function validateReleaseId(value) {
 function normalizeFingerprint(value) {
   if (Buffer.isBuffer(value)) return `SHA256:${crypto.createHash('sha256').update(value).digest('base64')}`;
   return String(value || '').trim();
+}
+
+export class PersistentStateStore {
+  constructor({ filePath, serverId }) {
+    this.filePath = filePath || path.join(process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : process.cwd(), 'oblivion-control', 'sftp-bridge-state.json');
+    this.serverId = serverId;
+  }
+
+  load() {
+    if (!fs.existsSync(this.filePath)) return { serverId: this.serverId, currentReleaseId: null, status: 'IDLE', lastApplyAt: null, lastRollbackAt: null };
+    let parsed;
+    try { parsed = JSON.parse(fs.readFileSync(this.filePath, 'utf8')); } catch { throw new Error('SFTP_STATE_CORRUPT'); }
+    if (!parsed || parsed.serverId !== this.serverId || !STATE_STATUSES.has(parsed.status) || (parsed.currentReleaseId != null && (() => { try { validateReleaseId(parsed.currentReleaseId); return false; } catch { return true; } })())) throw new Error('SFTP_STATE_CORRUPT');
+    return { serverId: this.serverId, currentReleaseId: parsed.currentReleaseId ?? null, status: parsed.status, lastApplyAt: parsed.lastApplyAt ?? null, lastRollbackAt: parsed.lastRollbackAt ?? null };
+  }
+
+  async save(state) {
+    const safe = { serverId: this.serverId, currentReleaseId: state.currentReleaseId ?? null, status: state.status, lastApplyAt: state.lastApplyAt ?? null, lastRollbackAt: state.lastRollbackAt ?? null };
+    if (!STATE_STATUSES.has(safe.status) || (safe.currentReleaseId != null && !RELEASE_ID_RE.test(safe.currentReleaseId))) throw new Error('SFTP_STATE_INVALID');
+    const directory = path.dirname(this.filePath);
+    const temporary = `${this.filePath}.tmp`;
+    await fs.promises.mkdir(directory, { recursive: true });
+    let handle;
+    try {
+      handle = await fs.promises.open(temporary, 'w');
+      await handle.writeFile(`${JSON.stringify(safe, null, 2)}\n`, 'utf8');
+      await handle.sync();
+      await handle.close();
+      handle = null;
+      await fs.promises.rename(temporary, this.filePath);
+    } catch (error) {
+      try { await handle?.close(); } catch {}
+      try { await fs.promises.unlink(temporary); } catch {}
+      throw error;
+    }
+  }
 }
 
 export function normalizeRemoteRoot(value = process.env.OBC_QONZER_REMOTE_ROOT || '/instance/OblivionControl') {
@@ -85,7 +123,8 @@ export class SftpBridgeAgent {
     transport,
     fetchImpl = globalThis.fetch,
     hostFingerprint = process.env.OBC_QONZER_SFTP_HOST_FINGERPRINT_SHA256,
-    stateStore = {}
+    stateStore,
+    stateFile
   } = {}) {
     if (!apiBase) throw new Error('OBC_API_BASE_REQUIRED');
     if (!token || Buffer.byteLength(token) < 32) throw new Error('OBC_BRIDGE_TOKEN_REQUIRED');
@@ -98,9 +137,8 @@ export class SftpBridgeAgent {
     this.transport = transport;
     this.fetchImpl = fetchImpl;
     this.hostFingerprint = hostFingerprint ? normalizeFingerprint(hostFingerprint) : '';
-    this.stateStore = stateStore;
-    this.stateStore.currentReleaseId ??= null;
-    this.stateStore.status ??= 'IDLE';
+    this.stateStore = stateStore || new PersistentStateStore({ filePath: stateFile, serverId: this.serverId }).load();
+    this.persistentState = stateStore ? null : new PersistentStateStore({ filePath: stateFile, serverId: this.serverId });
     this.connected = false;
     this.applyState = 'IDLE';
   }
@@ -140,6 +178,14 @@ export class SftpBridgeAgent {
   async withConnection(operation) {
     try { await this.connect(); return await operation(); }
     finally { try { await this.close(); } catch { this.connected = false; } }
+  }
+
+  async saveState(status, releaseId = null, field = 'lastApplyAt') {
+    this.stateStore.serverId = this.serverId;
+    this.stateStore.currentReleaseId = releaseId;
+    this.stateStore.status = status;
+    this.stateStore[field] = new Date().toISOString();
+    if (this.persistentState) await this.persistentState.save(this.stateStore);
   }
 
   async fetchRelease() {
@@ -182,7 +228,10 @@ export class SftpBridgeAgent {
     if (this.dryRun) return this.dryRunCheck();
     const release = await this.fetchRelease();
     validateReleaseId(release.releaseId);
-    if (this.stateStore.currentReleaseId === release.releaseId && this.stateStore.status === 'APPLIED') return { status: 'ALREADY_APPLIED', releaseId: release.releaseId, writes: 0 };
+    if (this.stateStore.currentReleaseId === release.releaseId && ['APPLIED', 'APPLIED_HEARTBEAT_PENDING'].includes(this.stateStore.status)) {
+      try { await this.heartbeat({ status: 'APPLIED', currentReleaseId: release.releaseId }); return { status: 'ALREADY_APPLIED', releaseId: release.releaseId, writes: 0 }; }
+      catch { return { status: 'APPLIED_HEARTBEAT_PENDING', releaseId: release.releaseId, writes: 0 }; }
+    }
     const backupRoot = `${this.remoteRoot}/.backups/${release.releaseId}`;
     await this.transport.mkdir(backupRoot, true);
     const backupManifest = {};
@@ -216,9 +265,9 @@ export class SftpBridgeAgent {
     } finally {
       for (const temp of temporary) { try { if (await this.transport.exists(temp)) await this.transport.delete(temp); } catch { /* best effort cleanup */ } }
     }
-    this.stateStore.currentReleaseId = release.releaseId;
-    this.stateStore.status = 'APPLIED';
-    await this.heartbeat({ status: 'APPLIED', currentReleaseId: release.releaseId });
+    await this.saveState('APPLIED', release.releaseId, 'lastApplyAt');
+    try { await this.heartbeat({ status: 'APPLIED', currentReleaseId: release.releaseId }); }
+    catch { await this.saveState('APPLIED_HEARTBEAT_PENDING', release.releaseId, 'lastApplyAt'); return { status: 'APPLIED_HEARTBEAT_PENDING', releaseId: release.releaseId, files: ALLOWLIST.length, backupRoot }; }
     return { status: 'APPLIED', releaseId: release.releaseId, files: ALLOWLIST.length, backupRoot };
   }
 
@@ -246,9 +295,9 @@ export class SftpBridgeAgent {
     const backupRoot = `${this.remoteRoot}/.backups/${releaseId}`;
     if (!await this.transport.exists(`${backupRoot}/manifest.json`)) throw new Error('BACKUP_NOT_FOUND');
     await this.restoreBackup(releaseId);
-    this.stateStore.currentReleaseId = null;
-    this.stateStore.status = 'ROLLED_BACK';
-    await this.heartbeat({ status: 'ROLLED_BACK', rolledBackReleaseId: releaseId });
+    await this.saveState('ROLLED_BACK', null, 'lastRollbackAt');
+    try { await this.heartbeat({ status: 'ROLLED_BACK', rolledBackReleaseId: releaseId }); }
+    catch { await this.saveState('ROLLED_BACK_HEARTBEAT_PENDING', null, 'lastRollbackAt'); return { status: 'ROLLED_BACK_HEARTBEAT_PENDING', releaseId }; }
     return { status: 'ROLLED_BACK', releaseId };
   }
 
