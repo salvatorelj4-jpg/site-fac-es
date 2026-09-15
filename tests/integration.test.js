@@ -417,6 +417,10 @@ describe('OBLIVION CONTROL ADMIN', () => {
         assert.strictEqual(byId.duty.entity_classname, 'OG_DutyTraderVisual');
         assert.strictEqual(byId.merc.entity_classname, 'OG_MercTradeVisual');
         assert.strictEqual(byId.merc_barter.entity_classname, 'OG_MercBarterNPC');
+        assert.strictEqual(byId.merc.name, 'Trader Mercenário (Rublos)');
+        assert.strictEqual(byId.merc_barter.name, 'Bazar Mercenário (Pregos)');
+        assert.strictEqual(byId.merc.currency, 'RUB');
+        assert.strictEqual(byId.merc_barter.currency, 'NAILS');
     });
 
     it('should import the V1.6 reference catalog as third-party static data', async () => {

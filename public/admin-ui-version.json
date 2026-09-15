@@ -1,1 +1,10 @@
-{"ui":"27.1","name":"Oblivion Control Admin","redesign":true}
+{
+  "ui": "27.3",
+  "name": "Oblivion Control Admin",
+  "redesign": true,
+  "features": [
+    "item-classname-picker",
+    "trader-catalog-browser",
+    "photo-reuse"
+  ]
+}

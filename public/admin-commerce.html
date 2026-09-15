@@ -21,7 +21,7 @@
 <div id="ruleForm" class="admin-card hidden">
   <div class="admin-card-top"><div><h3 id="ruleFormTitle">NOVA REGRA</h3><div class="admin-card-sub">Rascunho do Oblivion Control — não aplicado automaticamente.</div></div><span class="admin-badge warn">DRAFT</span></div>
   <input type="hidden" id="ruleId"><div class="admin-form-grid" style="margin-top:12px">
-    <div><label>TRADER</label><select id="rTrader"></select></div><div><label>CLASSNAME</label><input id="rClassname" placeholder="Battery9V"></div>
+    <div><label>TRADER</label><select id="rTrader"></select></div><div><label>ITEM / CLASSNAME</label><div class="admin-item-input"><input id="rClassname" placeholder="Selecione um item do catálogo"><button type="button" class="admin-btn picker" onclick="openItemPicker()">▦ ESCOLHER ITEM</button></div><small class="admin-field-help">Escolha visualmente entre todos os classnames catalogados pelo Oblivion Control.</small></div>
     <div><label>NOME VISÍVEL</label><input id="rName" placeholder="Bateria 9V"></div><div><label>CATEGORIA</label><input id="rCategory" placeholder="ELETRÔNICOS"></div>
     <div><label>PREÇO QUE O TRADER PAGA</label><input id="rBuy" type="number" min="0"></div><div><label>PREÇO QUE O TRADER VENDE</label><input id="rSell" type="number" min="0"></div>
     <div><label>ESTOQUE</label><select id="rStockMode" onchange="rStock.disabled=this.value==='infinite'"><option value="infinite">INFINITO</option><option value="finite">FINITO</option></select></div><div><label>QUANTIDADE EM ESTOQUE</label><input id="rStock" type="number" min="0" disabled></div>
@@ -45,12 +45,93 @@
 <div class="admin-inline-filter"><input id="search" placeholder="Buscar item/categoria..." oninput="renderItems()"><select id="catalogCategory" onchange="renderItems()"><option value="">TODAS AS CATEGORIAS</option></select><button class="admin-btn" onclick="loadCatalog()">ATUALIZAR</button></div><div id="items" class="admin-grid three"></div>
 </section>
 </main></div>
-<script src="app.js"></script><script src="admin-control.js"></script><script>
+<script src="app.js"></script><script src="admin-control.js"></script>
+<div id="itemPickerModal" class="admin-modal hidden" role="dialog" aria-modal="true" aria-labelledby="itemPickerTitle">
+  <div class="admin-modal-backdrop" onclick="closeItemPicker()"></div>
+  <section class="admin-modal-panel admin-item-picker-panel">
+    <div class="admin-modal-head">
+      <div><div class="admin-eyebrow">Biblioteca de itens / Oblivion Control</div><h2 id="itemPickerTitle">ESCOLHER ITEM DO SERVIDOR</h2><p>Lista dos classnames atualmente catalogados/importados no sistema. Fotos existentes do site são reutilizadas automaticamente.</p></div>
+      <button class="admin-btn" type="button" onclick="closeItemPicker()">✕ FECHAR</button>
+    </div>
+    <div class="admin-picker-toolbar">
+      <input id="itemPickerSearch" placeholder="Buscar nome, classname, categoria ou trader..." oninput="renderItemPicker()">
+      <select id="itemPickerCategory" onchange="renderItemPicker()"><option value="">TODAS AS CATEGORIAS</option></select>
+      <select id="itemPickerPhoto" onchange="renderItemPicker()"><option value="">COM OU SEM FOTO</option><option value="with">COM FOTO</option><option value="without">SEM FOTO</option></select>
+    </div>
+    <div class="admin-picker-summary"><b id="itemPickerCount">0</b> itens encontrados <span>• clique em um item para preencher a regra</span></div>
+    <div id="itemPickerGrid" class="admin-item-picker-grid"></div>
+  </section>
+</div>
+<script>
+let itemLibrary=[];
+function itemPickerPlaceholder(item){
+  const label=String(item?.item_name||item?.classname||'?').trim();
+  return `<div class="admin-item-thumb placeholder"><span>${escapeHtml(label.slice(0,2).toUpperCase())}</span><small>SEM FOTO</small></div>`;
+}
+async function ensureItemLibrary(){
+  if(itemLibrary.length)return itemLibrary;
+  itemLibrary=await api('/api/admin/oblivion/item-library');
+  const cats=[...new Set(itemLibrary.map(x=>x.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  itemPickerCategory.innerHTML='<option value="">TODAS AS CATEGORIAS</option>'+cats.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  return itemLibrary;
+}
+async function openItemPicker(){
+  if(ruleId.value)return showError('O classname de uma regra existente é imutável. Crie uma nova regra para trocar o item.');
+  itemPickerModal.classList.remove('hidden');
+  document.body.classList.add('admin-modal-open');
+  itemPickerGrid.innerHTML='<div class="admin-empty">Carregando biblioteca de classnames...</div>';
+  try{await ensureItemLibrary();renderItemPicker();setTimeout(()=>itemPickerSearch.focus(),40)}catch(e){itemPickerGrid.innerHTML='<div class="admin-empty">Não foi possível carregar a biblioteca de itens.</div>'}
+}
+function closeItemPicker(){itemPickerModal.classList.add('hidden');document.body.classList.remove('admin-modal-open')}
+function renderItemPicker(){
+  const q=(itemPickerSearch?.value||'').trim().toLowerCase();
+  const cat=itemPickerCategory?.value||'';
+  const photoFilter=itemPickerPhoto?.value||'';
+  const rows=itemLibrary.filter(item=>{
+    const hay=[item.item_name,item.classname,item.category,...(item.traders||[])].join(' ').toLowerCase();
+    if(q&&!hay.includes(q))return false;
+    if(cat&&item.category!==cat)return false;
+    if(photoFilter==='with'&&!item.hasPhoto)return false;
+    if(photoFilter==='without'&&item.hasPhoto)return false;
+    return true;
+  });
+  itemPickerCount.textContent=rows.length;
+  itemPickerGrid.innerHTML=rows.length?rows.map(item=>{
+    const thumb=item.photo?`<div class="admin-item-thumb"><img src="${escapeHtml(item.photo)}" alt="${escapeHtml(item.item_name)}"></div>`:itemPickerPlaceholder(item);
+    const sell=item.sellPriceRange||[0,0],buy=item.buyPriceRange||[0,0];
+    const sellText=sell[0]===sell[1]?adminMoney(sell[1]):`${adminMoney(sell[0])}–${adminMoney(sell[1])}`;
+    const buyText=buy[0]===buy[1]?adminMoney(buy[1]):`${adminMoney(buy[0])}–${adminMoney(buy[1])}`;
+    return `<button type="button" class="admin-item-choice" onclick='selectLibraryItem(${JSON.stringify(item).replace(/'/g,"&#39;")})'>${thumb}<div class="admin-item-choice-body"><strong>${escapeHtml(item.item_name)}</strong><code>${escapeHtml(item.classname)}</code><span>${escapeHtml(item.category||'GERAL')}</span><div class="admin-item-choice-meta"><small>${item.traderCount} trader${item.traderCount===1?'':'s'}</small><small>Compra ${buyText}</small><small>Venda ${sellText}</small></div></div></button>`;
+  }).join(''):'<div class="admin-empty">Nenhum classname encontrado com esses filtros.</div>';
+}
+async function selectLibraryItem(item){
+  rClassname.value=item.classname||'';
+  rName.value=item.item_name||item.classname||'';
+  rCategory.value=item.category||'GERAL';
+  // Prefer the selected trader's original/reference rule when one exists.
+  try{
+    const traderId=rTrader.value;
+    const source=await api(`/api/admin/oblivion/rules?trader_id=${encodeURIComponent(traderId)}`);
+    const ref=source.find(x=>x.classname===item.classname);
+    if(ref){
+      rBuy.value=Number(ref.buy_price||0);rSell.value=Number(ref.sell_price||0);
+      rBuyEnabled.checked=!!ref.buy_enabled;rSellEnabled.checked=!!ref.sell_enabled;
+      rEnabled.checked=!!ref.enabled;rRep.value=Number(ref.reputation_required||0);rMax.value=Number(ref.max_quantity||1);
+      rStockMode.value=ref.stock_mode||'infinite';rStock.value=ref.stock_mode==='finite'?Number(ref.stock||0):0;rStock.disabled=rStockMode.value==='infinite';
+      if(ref.photo)rulePhotoPreview.innerHTML=`<img src="${escapeHtml(ref.photo)}" class="admin-rule-photo-preview" alt="Imagem do item">`;
+    }else if(item.photo){
+      rulePhotoPreview.innerHTML=`<img src="${escapeHtml(item.photo)}" class="admin-rule-photo-preview" alt="Imagem do item"><div class="admin-field-help">Foto existente reutilizada como referência visual. Para persistir uma nova foto na regra, envie o arquivo abaixo.</div>`;
+    }else{rulePhotoPreview.innerHTML=''}
+  }catch(_){/* picker remains usable even if trader lookup fails */}
+  closeItemPicker();
+  rName.focus();
+}
+
 let catalog=[],obcTraders=[],rules=[],obcOverview=null;
 function switchCommerceTab(name,btn){document.querySelectorAll('.admin-pane').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.admin-tab').forEach(x=>x.classList.remove('active'));document.getElementById('pane-'+name)?.classList.add('active');btn?.classList.add('active')}
 async function initCommerceAdmin(){checkAuth();injectNav('/admin-commerce.html');mountAdminRail('commerce');await Promise.all([loadObc(),loadCatalog()]);const requested=new URLSearchParams(location.search).get('trader');if(requested){ruleTraderFilter.value=requested;rTrader.value=requested;switchCommerceTab('rules',document.querySelectorAll('.admin-tab')[1]);await loadRules()}}
-async function loadObc(){[obcOverview,obcTraders]=await Promise.all([api('/api/admin/oblivion/overview'),api('/api/admin/oblivion/traders')]);statTraders.textContent=obcOverview.counts.traders;statRules.textContent=obcOverview.counts.rules;statOverlays.textContent=obcOverview.counts.activeOverlays;statApply.innerHTML=adminStateBadge(obcOverview.integration.bridgeStatus==='CONNECTED'?'BRIDGE CONTROLADO':'STAGING / NÃO APLICADO');const opts=obcTraders.map(t=>`<option value="${escapeHtml(t.trader_id)}">${escapeHtml(t.name)} • ${escapeHtml(t.trader_id)}</option>`).join('');ruleTraderFilter.innerHTML='<option value="">TODOS OS TRADERS</option>'+opts;rTrader.innerHTML=opts;renderRealTraders()}
-function renderRealTraders(){realTraderGrid.innerHTML=obcTraders.map(t=>{const blocked=t.trader_id==='merc_barter';return `<article class="admin-card admin-card-accent" style="--card-accent:${blocked?'#f0c15a':'#5eb7ff'}"><div class="admin-card-top"><div><div class="admin-card-title">${escapeHtml(t.name)}</div><div class="admin-card-sub">${escapeHtml(t.entity_classname)}</div></div>${adminStateBadge(t.validation_status)}</div><div class="admin-metric-row"><div class="admin-metric"><b>${t.rule_count}</b><small>Ofertas mapeadas</small></div><div class="admin-metric"><b>${t.catalog_override_enabled?'ON':'OFF'}</b><small>Overlay draft</small></div><div class="admin-metric"><b>${escapeHtml(t.currency)}</b><small>Moeda</small></div></div><p style="font-size:11px">ID: <b>${escapeHtml(t.trader_id)}</b><br>Facção: ${escapeHtml(t.faction_code||'global')}<br>Local: ${escapeHtml(t.location_label||'não informado')}<br>Source: ${escapeHtml(t.source_of_truth)}</p>${blocked?'<div class="admin-warning">Identidade dos três bazares ainda é ambígua. Controle por instância bloqueado.</div>':''}<div class="admin-actions"><button class="admin-btn" onclick="openRulesFor('${t.trader_id}')">ITENS / REGRAS</button><button class="admin-btn ${t.catalog_override_enabled?'warn':'success'}" ${blocked?'disabled':''} onclick="toggleOverlay('${t.trader_id}',${t.catalog_override_enabled?0:1},'${t.overlay_mode}')">${t.catalog_override_enabled?'DESLIGAR OVERLAY DRAFT':'ATIVAR OVERLAY DRAFT'}</button></div></article>`}).join('')}
+async function loadObc(){[obcOverview,obcTraders]=await Promise.all([api('/api/admin/oblivion/overview'),api('/api/admin/oblivion/traders')]);statTraders.textContent=obcOverview.counts.traders;statRules.textContent=obcOverview.counts.rules;statOverlays.textContent=obcOverview.counts.activeOverlays;statApply.innerHTML=adminStateBadge(obcOverview.integration.bridgeStatus==='CONNECTED'?'BRIDGE CONTROLADO':'STAGING / NÃO APLICADO');const opts=obcTraders.map(t=>`<option value="${escapeHtml(t.trader_id)}">${escapeHtml(adminTraderDisplayName(t))} • ${escapeHtml(t.trader_id)}</option>`).join('');ruleTraderFilter.innerHTML='<option value="">TODOS OS TRADERS</option>'+opts;rTrader.innerHTML=opts;renderRealTraders()}
+function renderRealTraders(){realTraderGrid.innerHTML=obcTraders.map(t=>{const blocked=t.trader_id==='merc_barter';return `<article class="admin-card admin-card-accent" style="--card-accent:${blocked?'#f0c15a':'#5eb7ff'}"><div class="admin-card-top"><div><div class="admin-card-title">${escapeHtml(adminTraderDisplayName(t))}</div><div class="admin-card-sub">${escapeHtml(t.entity_classname)}</div></div>${adminStateBadge(t.validation_status)}</div><div class="admin-metric-row"><div class="admin-metric"><b>${t.rule_count}</b><small>Ofertas mapeadas</small></div><div class="admin-metric"><b>${t.catalog_override_enabled?'ON':'OFF'}</b><small>Overlay draft</small></div><div class="admin-metric"><b>${escapeHtml(t.currency)}</b><small>${blocked?'Moeda • Pregos':'Moeda'}</small></div></div><p style="font-size:11px">ID: <b>${escapeHtml(t.trader_id)}</b><br>Facção: ${escapeHtml(t.faction_code||'global')}<br>Local: ${escapeHtml(t.location_label||'não informado')}<br>Source: ${escapeHtml(t.source_of_truth)}</p>${blocked?'<div class="admin-warning"><b>3 bazares detectados.</b><br>Todos usam OG_MercBarterNPC. A identidade individual de cada instância ainda não foi resolvida; por segurança, o controle por instância continua bloqueado.</div>':''}<div class="admin-actions"><button class="admin-btn" onclick="openRulesFor('${t.trader_id}')">ITENS / REGRAS</button><button class="admin-btn ${t.catalog_override_enabled?'warn':'success'}" ${blocked?'disabled':''} onclick="toggleOverlay('${t.trader_id}',${t.catalog_override_enabled?0:1},'${t.overlay_mode}')">${t.catalog_override_enabled?'DESLIGAR OVERLAY DRAFT':'ATIVAR OVERLAY DRAFT'}</button></div></article>`}).join('')}
 async function toggleOverlay(id,enabled,mode){if(!confirm(`${enabled?'Ativar':'Desativar'} overlay no rascunho de ${id}? Nada será aplicado no DayZ sem release/bridge.`))return;await api(`/api/admin/oblivion/traders/${id}`,{method:'PUT',body:{catalog_override_enabled:enabled,overlay_mode:mode}});showSuccess('Rascunho atualizado.');await loadObc()}
 function openRulesFor(id){ruleTraderFilter.value=id;rTrader.value=id;switchCommerceTab('rules',document.querySelectorAll('.admin-tab')[1]);loadRules()}
 async function loadRules(){const trader=ruleTraderFilter.value;rules=await api('/api/admin/oblivion/rules'+(trader?`?trader_id=${encodeURIComponent(trader)}`:''));renderRules()}
