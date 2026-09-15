@@ -111,6 +111,69 @@ async function initDb() {
                 UNIQUE(role, capability)
             )`);
 
+            await dbRun(`CREATE TABLE IF NOT EXISTS user_permissions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                capability TEXT NOT NULL,
+                effect TEXT NOT NULL DEFAULT 'allow',
+                created_by INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, capability)
+            )`);
+
+            await dbRun(`CREATE TABLE IF NOT EXISTS quests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT NOT NULL UNIQUE,
+                title TEXT NOT NULL,
+                faction_id INTEGER REFERENCES factions(id),
+                quest_giver TEXT DEFAULT '',
+                description TEXT DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'DRAFT',
+                repeatable INTEGER NOT NULL DEFAULT 0,
+                cooldown_hours INTEGER NOT NULL DEFAULT 0,
+                prerequisite_quest_id INTEGER REFERENCES quests(id),
+                requirements_json TEXT NOT NULL DEFAULT '[]',
+                rewards_json TEXT NOT NULL DEFAULT '{}',
+                image TEXT DEFAULT '',
+                created_by INTEGER REFERENCES users(id),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
+            await dbRun(`CREATE TABLE IF NOT EXISTS quest_progress (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quest_id INTEGER NOT NULL REFERENCES quests(id) ON DELETE CASCADE,
+                person_id INTEGER NOT NULL REFERENCES stalkers(id) ON DELETE CASCADE,
+                status TEXT NOT NULL DEFAULT 'NOT_STARTED',
+                progress_json TEXT NOT NULL DEFAULT '{}',
+                accepted_at DATETIME,
+                completed_at DATETIME,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(quest_id, person_id)
+            )`);
+
+            await dbRun(`CREATE TABLE IF NOT EXISTS traders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                trader_type TEXT NOT NULL DEFAULT 'TRADER',
+                faction_id INTEGER REFERENCES factions(id),
+                location TEXT DEFAULT '',
+                active INTEGER NOT NULL DEFAULT 1,
+                buy_categories_json TEXT NOT NULL DEFAULT '[]',
+                sell_categories_json TEXT NOT NULL DEFAULT '[]',
+                quest_ids_json TEXT NOT NULL DEFAULT '[]',
+                notes TEXT DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
+            await dbRun(`CREATE TABLE IF NOT EXISTS server_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL DEFAULT '',
+                updated_by INTEGER,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
             await dbRun(`CREATE TABLE IF NOT EXISTS audit_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER,
@@ -322,6 +385,155 @@ async function initDb() {
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )`);
 
+            await dbRun(`CREATE TABLE IF NOT EXISTS trade_catalog (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                category TEXT NOT NULL DEFAULT 'GERAL',
+                buy_price REAL NOT NULL DEFAULT 0,
+                sell_price REAL NOT NULL DEFAULT 0,
+                reputation_reward INTEGER NOT NULL DEFAULT 0,
+                stock REAL NOT NULL DEFAULT 0,
+                track_stock INTEGER NOT NULL DEFAULT 0,
+                active INTEGER NOT NULL DEFAULT 1,
+                photo TEXT DEFAULT '',
+                notes TEXT DEFAULT '',
+                channels_json TEXT NOT NULL DEFAULT '["ALL"]',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
+
+            // Oblivion Control administrative control-plane.
+            // This is configuration/draft state only: it never claims Qonzer/Workshop application.
+            await dbRun(`CREATE TABLE IF NOT EXISTS oblivion_traders (
+                trader_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                entity_classname TEXT NOT NULL,
+                faction_code TEXT DEFAULT '',
+                location_label TEXT DEFAULT '',
+                currency TEXT NOT NULL DEFAULT 'RUB',
+                catalog_override_enabled INTEGER NOT NULL DEFAULT 0,
+                overlay_mode TEXT NOT NULL DEFAULT 'selective',
+                source_of_truth TEXT NOT NULL DEFAULT 'THIRD_PARTY_STATIC',
+                validation_status TEXT NOT NULL DEFAULT 'READY_STATIC',
+                notes TEXT DEFAULT '',
+                updated_by INTEGER REFERENCES users(id),
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
+            await dbRun(`CREATE TABLE IF NOT EXISTS oblivion_trader_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                trader_id TEXT NOT NULL REFERENCES oblivion_traders(trader_id) ON DELETE CASCADE,
+                item_name TEXT NOT NULL,
+                classname TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'GERAL',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                buy_enabled INTEGER NOT NULL DEFAULT 0,
+                sell_enabled INTEGER NOT NULL DEFAULT 1,
+                buy_price REAL NOT NULL DEFAULT 0,
+                sell_price REAL NOT NULL DEFAULT 0,
+                stock_mode TEXT NOT NULL DEFAULT 'infinite',
+                stock INTEGER NOT NULL DEFAULT -1,
+                reputation_required INTEGER NOT NULL DEFAULT 0,
+                max_quantity INTEGER NOT NULL DEFAULT 1,
+                source_of_truth TEXT NOT NULL DEFAULT 'OBLIVIONCONTROL_CONFIG',
+                photo TEXT DEFAULT '',
+                notes TEXT DEFAULT '',
+                created_by INTEGER REFERENCES users(id),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(trader_id, classname)
+            )`);
+
+            await dbRun(`CREATE TABLE IF NOT EXISTS oblivion_releases (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                release_code TEXT UNIQUE NOT NULL,
+                status TEXT NOT NULL DEFAULT 'DRAFT',
+                payload_json TEXT NOT NULL DEFAULT '{}',
+                notes TEXT DEFAULT '',
+                created_by INTEGER REFERENCES users(id),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                approved_at DATETIME
+            )`);
+
+            const oblivionTraderSeeds = [
+                ['skad','Skad','OG_SkadBorodaVisual','','Skad','RUB','VALIDATED_LOCAL'],
+                ['yanov','Yanov','OG_YanovTraderVisual','','Yanov','RUB','VALIDATED_LOCAL'],
+                ['bandit','Bandit Trader','OG_BanditTraderVisual','bandits','Base dos Bandidos','RUB','VALIDATED_LOCAL'],
+                ['duty','Duty Trader','OG_DutyTraderVisual','duty','Base Duty','RUB','VALIDATED_LOCAL'],
+                ['merc','Merc Trader','OG_MercTradeVisual','mercenaries','Base Mercenária','RUB','OWNER_RISK_ACCEPTED_NOT_LIVE_TESTED'],
+                ['merc_barter','Merc Barter / Bazar','OG_MercBarterNPC','mercenaries','Bazar','NAILS','READY_STATIC_IDENTITY_AMBIGUOUS']
+            ];
+            for (const t of oblivionTraderSeeds) {
+                await dbRun(`INSERT OR IGNORE INTO oblivion_traders
+                    (trader_id,name,entity_classname,faction_code,location_label,currency,validation_status)
+                    VALUES (?,?,?,?,?,?,?)`, t);
+            }
+
+            // Seed the read-only V1.6 reference catalog only when this control-plane is new.
+            // Rows imported from THIRD_PARTY_STATIC are panel references; editing one promotes it
+            // to OBLIVIONCONTROL_CONFIG and still requires a release + bridge to reach DayZ.
+            const obcCatalogCount = await dbGet(`SELECT COUNT(*) count FROM oblivion_trader_rules`);
+            const obcCatalogSeedPath = path.join(__dirname, 'data', 'oblivion-v16-catalog.json');
+            if (Number(obcCatalogCount?.count || 0) === 0 && fs.existsSync(obcCatalogSeedPath)) {
+                try {
+                    const seedDoc = JSON.parse(fs.readFileSync(obcCatalogSeedPath, 'utf8'));
+                    const offers = Array.isArray(seedDoc.offers) ? seedDoc.offers : [];
+                    for (const offer of offers) {
+                        await dbRun(`INSERT OR IGNORE INTO oblivion_trader_rules
+                            (trader_id,item_name,classname,category,enabled,buy_enabled,sell_enabled,buy_price,sell_price,stock_mode,stock,reputation_required,max_quantity,source_of_truth,photo,notes)
+                            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [
+                                String(offer.traderId || '').toLowerCase(),
+                                String(offer.itemName || offer.classname || ''),
+                                String(offer.classname || ''),
+                                String(offer.category || 'GERAL'),
+                                offer.enabled === false ? 0 : 1,
+                                offer.buyEnabled ? 1 : 0,
+                                offer.sellEnabled ? 1 : 0,
+                                Number(offer.buyPrice || 0),
+                                Number(offer.sellPrice || 0),
+                                'infinite', -1, 0, 1,
+                                'THIRD_PARTY_STATIC', '',
+                                String(offer.notes || 'Referência V1.6 importada em modo somente leitura.')
+                            ]);
+                    }
+                    console.log(`Oblivion V1.6 reference catalog seeded: ${offers.length} offers.`);
+                } catch (catalogSeedError) {
+                    console.warn('Oblivion reference catalog seed skipped:', catalogSeedError.message);
+                }
+            }
+
+            const obcSettings = [
+                ['obc.release_candidate','V1.6 RC1.2'],
+                ['obc.bridge_status','NOT_CONNECTED'],
+                ['obc.qonzer_status','NOT_INSTALLED'],
+                ['obc.workshop_status','NOT_PUBLISHED'],
+                ['obc.prices_active','false'],
+                ['obc.catalog_overrides_default','false']
+            ];
+            for (const [key,value] of obcSettings) {
+                await dbRun(`INSERT OR IGNORE INTO server_settings(key,value) VALUES (?,?)`,[key,value]);
+            }
+
+            const mutantTradeSeeds = [
+                ['Tentáculos de Bloodsucker','PARTES DE MUTANTES',3500,5000,30,12],
+                ['Garra de Chimera','PARTES DE MUTANTES',5200,7500,45,8],
+                ['Pé de Snork','PARTES DE MUTANTES',900,1500,12,30],
+                ['Mão de Burer','PARTES DE MUTANTES',2800,4200,28,12],
+                ['Tecido Neural de Controller','PARTES DE MUTANTES',6500,9000,55,6],
+                ['Olho de Pseudogigante','PARTES DE MUTANTES',8000,11500,70,5],
+                ['Cauda de Pseudocão','PARTES DE MUTANTES',1400,2200,15,25],
+                ['Material Psi de Psi-Dog','PARTES DE MUTANTES',4200,6200,38,10],
+                ['Casco de Javali Mutante','PARTES DE MUTANTES',700,1200,8,35],
+                ['Olho de Flesh','PARTES DE MUTANTES',500,900,6,40]
+            ];
+            for (const item of mutantTradeSeeds) {
+                await dbRun(`INSERT OR IGNORE INTO trade_catalog
+                    (name,category,buy_price,sell_price,reputation_reward,stock,track_stock,active,channels_json)
+                    VALUES (?,?,?,?,?,?,1,1,'["ALL"]')`, item);
+            }
+
+
 
             // Seed Factions
             const factions = [
@@ -338,7 +550,7 @@ async function initDb() {
 
             // Seed Permissions
             const roles = {
-                super_admin: ['faction:manage', 'users:manage', 'contracts:read', 'contracts:create', 'contracts:update', 'contracts:assign', 'audit:read', 'operations:read', 'operations:manage', 'research:read', 'research:manage', 'members:read', 'members:manage', 'items:read', 'items:manage', 'missions:read', 'missions:manage', 'reports:read', 'reports:manage', 'stalkers:read', 'stalkers:manage', 'config:manage', 'modules:manage'],
+                super_admin: ['oblivion:read', 'oblivion:manage', 'releases:manage', 'faction:manage', 'users:manage', 'contracts:read', 'contracts:create', 'contracts:update', 'contracts:assign', 'audit:read', 'operations:read', 'operations:manage', 'research:read', 'research:manage', 'members:read', 'members:manage', 'items:read', 'items:manage', 'missions:read', 'missions:manage', 'reports:read', 'reports:manage', 'stalkers:read', 'stalkers:manage', 'config:manage', 'modules:manage'],
                 faction_admin: ['users:manage', 'operations:read', 'operations:manage', 'research:read', 'research:manage', 'members:read', 'members:manage', 'items:read', 'items:manage', 'missions:read', 'missions:manage', 'reports:read', 'reports:manage', 'stalkers:read', 'stalkers:manage', 'contracts:read', 'contracts:create', 'contracts:update', 'contracts:assign', 'config:manage', 'audit:read'],
                 commander: ['operations:read', 'operations:manage', 'members:read', 'items:read', 'items:manage', 'missions:read', 'missions:manage', 'reports:read', 'reports:manage', 'stalkers:read', 'stalkers:manage', 'contracts:read', 'contracts:create', 'contracts:update', 'contracts:assign', 'research:read'],
                 operator: ['operations:read', 'members:read', 'items:read', 'missions:read', 'reports:read', 'reports:manage', 'stalkers:read', 'stalkers:manage', 'research:read', 'research:manage', 'contracts:read'],
@@ -539,6 +751,16 @@ app.use(cors({
     }
 }));
 
+// V27.1: admin UI assets must not be served stale during rollout.
+app.use((req, res, next) => {
+    if (/^\/admin(?:-[a-z-]+)?\.(?:html|css|js)$/.test(req.path) || req.path === '/admin-ui-version.json') {
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+    }
+    next();
+});
+app.get('/api/admin/ui-version-public', (req, res) => res.json({ ui: '27.1', redesign: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
@@ -593,11 +815,23 @@ function requireSuperAdminDelete(req, res, next) {
     next();
 }
 
+async function getEffectiveCapabilities(userId, role) {
+    if (role === 'super_admin') return ['*'];
+    const roleRows = await dbAll(`SELECT capability FROM permissions WHERE role=?`, [role]);
+    const caps = new Set(roleRows.map(r => r.capability));
+
+    const overrides = await dbAll(`SELECT capability,effect FROM user_permissions WHERE user_id=?`, [userId]);
+    for (const row of overrides) {
+        if (row.effect === 'deny') caps.delete(row.capability);
+        else caps.add(row.capability);
+    }
+    return [...caps];
+}
+
 function requireCapability(...capabilities) {
     return async (req, res, next) => {
         if (req.user.role === 'super_admin') return next();
-        const perms = await dbAll(`SELECT capability FROM permissions WHERE role = ?`, [req.user.role]);
-        const userCaps = perms.map(p => p.capability);
+        const userCaps = await getEffectiveCapabilities(req.user.id, req.user.role);
         const hasCap = capabilities.some(c => userCaps.includes(c));
         if (!hasCap) {
             await auditLog({ userId: req.user.id, factionId: req.user.factionId, action: 'DENIED', entity: 'capability', metadata: { required: capabilities } });
@@ -711,7 +945,8 @@ app.post('/api/login', loginLimiter, async (req, res, next) => {
         await auditLog({ userId: user.id, factionId: user.faction_id, action: 'LOGIN', ipAddress: req.ip });
         await sendDiscordNotification({ title: 'User Logged In', description: `${user.username} logged in.` });
         
-        res.json({ token, user: { id: user.id, name: user.name, role: user.role, factionId: user.faction_id, factionCode: user.factionCode, factionSlug: user.factionSlug, factionTheme: JSON.parse(user.factionTheme || '{}') } });
+        const capabilities = await getEffectiveCapabilities(user.id, user.role);
+        res.json({ token, user: { id: user.id, username: user.username, name: user.name, role: user.role, factionId: user.faction_id, factionCode: user.factionCode, factionSlug: user.factionSlug, factionTheme: JSON.parse(user.factionTheme || '{}'), capabilities } });
     } catch (err) { next(err); }
 });
 
@@ -2643,6 +2878,465 @@ async function resolveCommerceScope(req, moduleCode) {
     return { factionId, faction };
 }
 
+
+// --- GLOBAL ADMIN CONTROL LAYER ---
+const STAFF_CAPABILITY_CATALOG = [
+    {key:'server:panel', group:'PAINEL', label:'Acessar Central Administrativa'},
+    {key:'oblivion:read', group:'SERVIDOR DAYZ', label:'Visualizar Oblivion Control e traders reais'},
+    {key:'oblivion:manage', group:'SERVIDOR DAYZ', label:'Gerenciar overlays, regras e catálogo do Oblivion Control'},
+    {key:'releases:manage', group:'SERVIDOR DAYZ', label:'Criar/aprovar releases de configuração'},
+    {key:'faction:manage', group:'FACÇÕES', label:'Gerenciar facções'},
+    {key:'users:manage', group:'USUÁRIOS', label:'Gerenciar usuários'},
+    {key:'trade:manage', group:'COMÉRCIO', label:'Criar/editar catálogo global e traders'},
+    {key:'quests:manage', group:'QUESTS', label:'Criar/editar quests'},
+    {key:'quests:read', group:'QUESTS', label:'Visualizar quests globais'},
+    {key:'economy:read', group:'ECONOMIA', label:'Visualizar economia global'},
+    {key:'economy:manage', group:'ECONOMIA', label:'Gerenciar economia'},
+    {key:'operations:global', group:'OPERAÇÕES', label:'Visualizar operações globais'},
+    {key:'audit:read', group:'AUDITORIA', label:'Visualizar auditoria'},
+    {key:'config:manage', group:'SISTEMA', label:'Alterar configurações do sistema'},
+    {key:'stalkers:manage', group:'REGISTRO DA ZONA', label:'Gerenciar stalkers'},
+    {key:'missions:manage', group:'OPERAÇÕES', label:'Gerenciar missões'},
+    {key:'reports:manage', group:'OPERAÇÕES', label:'Gerenciar relatórios'},
+    {key:'research:manage', group:'OPERAÇÕES', label:'Gerenciar pesquisas/experimentos'},
+    {key:'items:manage', group:'ITENS', label:'Gerenciar itens/estoque'},
+    {key:'operations:manage', group:'OPERAÇÕES', label:'Gerenciar operações'}
+];
+
+app.get('/api/me/capabilities', auth, async (req,res,next)=>{
+    try{
+        res.json({capabilities:await getEffectiveCapabilities(req.user.id,req.user.role)});
+    }catch(e){next(e)}
+});
+
+app.get('/api/admin/staff/capabilities', auth, async (req,res)=>{
+    if(req.user.role!=='super_admin') return res.status(403).json({error:'Somente o Super Admin pode administrar permissões.'});
+    res.json(STAFF_CAPABILITY_CATALOG);
+});
+
+app.get('/api/admin/staff/:id/permissions', auth, async (req,res,next)=>{
+    try{
+        if(req.user.role!=='super_admin') return res.status(403).json({error:'Somente o Super Admin pode administrar permissões.'});
+        const user=await dbGet(`SELECT id,username,name,role,faction_id,active FROM users WHERE id=?`,[req.params.id]);
+        if(!user)return res.status(404).json({error:'Usuário não encontrado.'});
+        const roleCaps=(await dbAll(`SELECT capability FROM permissions WHERE role=?`,[user.role])).map(x=>x.capability);
+        const overrides=await dbAll(`SELECT capability,effect FROM user_permissions WHERE user_id=? ORDER BY capability`,[user.id]);
+        res.json({user,roleCapabilities:roleCaps,overrides,effective:await getEffectiveCapabilities(user.id,user.role)});
+    }catch(e){next(e)}
+});
+
+app.put('/api/admin/staff/:id/permissions', auth, async (req,res,next)=>{
+    try{
+        if(req.user.role!=='super_admin') return res.status(403).json({error:'Somente o Super Admin pode alterar permissões.'});
+        const target=await dbGet(`SELECT id,username,role FROM users WHERE id=?`,[req.params.id]);
+        if(!target)return res.status(404).json({error:'Usuário não encontrado.'});
+        if(target.role==='super_admin')return res.status(400).json({error:'Super Admin possui acesso total e não usa overrides.'});
+
+        const requested=Array.isArray(req.body.capabilities)?req.body.capabilities.map(String):[];
+        const valid=new Set(STAFF_CAPABILITY_CATALOG.map(x=>x.key));
+        const clean=[...new Set(requested.filter(x=>valid.has(x)))];
+
+        await dbRun(`DELETE FROM user_permissions WHERE user_id=?`,[target.id]);
+        for(const cap of clean){
+            await dbRun(`INSERT INTO user_permissions(user_id,capability,effect,created_by) VALUES (?,?, 'allow',?)`,[target.id,cap,req.user.id]);
+        }
+        await auditLog({userId:req.user.id,action:'UPDATE_STAFF_PERMISSIONS',entity:'users',entityId:target.id,metadata:{username:target.username,capabilities:clean}});
+        res.json({success:true,effective:await getEffectiveCapabilities(target.id,target.role)});
+    }catch(e){next(e)}
+});
+
+// QUESTS
+app.get('/api/quests', auth, async (req,res,next)=>{
+    try{
+        const rows=await dbAll(`SELECT q.*,f.name faction_name,p.code prerequisite_code,u.name created_by_name
+          FROM quests q LEFT JOIN factions f ON f.id=q.faction_id
+          LEFT JOIN quests p ON p.id=q.prerequisite_quest_id
+          LEFT JOIN users u ON u.id=q.created_by
+          ORDER BY q.id DESC`);
+        res.json(rows.map(r=>({...r,requirements:JSON.parse(r.requirements_json||'[]'),rewards:JSON.parse(r.rewards_json||'{}')})));
+    }catch(e){next(e)}
+});
+
+app.post('/api/admin/quests', auth, requireCapability('quests:manage'), upload.single('image'), async (req,res,next)=>{
+    try{
+        const code=String(req.body.code||'').trim().toUpperCase();
+        const title=String(req.body.title||'').trim();
+        if(code.length<3||title.length<3)return res.status(400).json({error:'Código e título são obrigatórios.'});
+        let requirements=[]; let rewards={};
+        try{requirements=JSON.parse(req.body.requirements||'[]')}catch(_){}
+        try{rewards=JSON.parse(req.body.rewards||'{}')}catch(_){}
+        const result=await dbRun(`INSERT INTO quests(code,title,faction_id,quest_giver,description,status,repeatable,cooldown_hours,prerequisite_quest_id,requirements_json,rewards_json,image,created_by)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,[
+            code,title,req.body.faction_id?Number(req.body.faction_id):null,String(req.body.quest_giver||'').trim(),
+            String(req.body.description||'').trim(),String(req.body.status||'DRAFT').toUpperCase(),
+            Number(req.body.repeatable||0)?1:0,Number(req.body.cooldown_hours||0),req.body.prerequisite_quest_id?Number(req.body.prerequisite_quest_id):null,
+            JSON.stringify(Array.isArray(requirements)?requirements:[]),JSON.stringify(rewards&&typeof rewards==='object'?rewards:{}),
+            req.file?`/uploads/${req.file.filename}`:'',req.user.id
+        ]);
+        await auditLog({userId:req.user.id,action:'CREATE_QUEST',entity:'quests',entityId:result.lastID,metadata:{code,title}});
+        res.status(201).json({success:true,id:result.lastID});
+    }catch(e){if(String(e.message).includes('UNIQUE'))return res.status(409).json({error:'Já existe uma quest com esse código.'});next(e)}
+});
+
+app.put('/api/admin/quests/:id', auth, requireCapability('quests:manage'), upload.single('image'), async (req,res,next)=>{
+    try{
+        const current=await dbGet(`SELECT * FROM quests WHERE id=?`,[req.params.id]);
+        if(!current)return res.status(404).json({error:'Quest não encontrada.'});
+        let requirements=JSON.parse(current.requirements_json||'[]'),rewards=JSON.parse(current.rewards_json||'{}');
+        if(req.body.requirements!==undefined)try{requirements=JSON.parse(req.body.requirements)}catch(_){}
+        if(req.body.rewards!==undefined)try{rewards=JSON.parse(req.body.rewards)}catch(_){}
+        const image=req.file?`/uploads/${req.file.filename}`:current.image;
+        await dbRun(`UPDATE quests SET code=?,title=?,faction_id=?,quest_giver=?,description=?,status=?,repeatable=?,cooldown_hours=?,prerequisite_quest_id=?,requirements_json=?,rewards_json=?,image=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,[
+            String(req.body.code||current.code).trim().toUpperCase(),String(req.body.title||current.title).trim(),
+            req.body.faction_id?Number(req.body.faction_id):null,String(req.body.quest_giver??current.quest_giver).trim(),
+            String(req.body.description??current.description).trim(),String(req.body.status||current.status).toUpperCase(),
+            Number(req.body.repeatable??current.repeatable)?1:0,Number(req.body.cooldown_hours??current.cooldown_hours),
+            req.body.prerequisite_quest_id?Number(req.body.prerequisite_quest_id):null,JSON.stringify(requirements),JSON.stringify(rewards),image,req.params.id
+        ]);
+        await auditLog({userId:req.user.id,action:'UPDATE_QUEST',entity:'quests',entityId:req.params.id,metadata:{code:req.body.code||current.code}});
+        res.json({success:true});
+    }catch(e){next(e)}
+});
+
+app.delete('/api/admin/quests/:id', auth, requireSuperAdminDelete, async (req,res,next)=>{
+    try{
+        const q=await dbGet(`SELECT id,code,title FROM quests WHERE id=?`,[req.params.id]);
+        if(!q)return res.status(404).json({error:'Quest não encontrada.'});
+        await dbRun(`DELETE FROM quest_progress WHERE quest_id=?`,[q.id]);
+        await dbRun(`DELETE FROM quests WHERE id=?`,[q.id]);
+        await auditLog({userId:req.user.id,action:'DELETE_QUEST',entity:'quests',entityId:q.id,metadata:{code:q.code,title:q.title}});
+        res.json({success:true});
+    }catch(e){next(e)}
+});
+
+// Quest progress for web/RP integration
+app.get('/api/quest-progress', auth, async (req,res,next)=>{
+    try{
+        const personId=Number(req.query.person_id||0);
+        if(!personId)return res.status(400).json({error:'person_id é obrigatório.'});
+        const rows=await dbAll(`SELECT qp.*,q.code,q.title FROM quest_progress qp JOIN quests q ON q.id=qp.quest_id WHERE qp.person_id=? ORDER BY qp.id DESC`,[personId]);
+        res.json(rows.map(r=>({...r,progress:JSON.parse(r.progress_json||'{}')})));
+    }catch(e){next(e)}
+});
+
+app.put('/api/quest-progress/:questId/:personId', auth, requireCapability('quests:manage'), async (req,res,next)=>{
+    try{
+        const status=String(req.body.status||'IN_PROGRESS').toUpperCase();
+        const progress=req.body.progress&&typeof req.body.progress==='object'?req.body.progress:{};
+        await dbRun(`INSERT INTO quest_progress(quest_id,person_id,status,progress_json,accepted_at,completed_at,updated_at)
+          VALUES (?,?,?,?,CASE WHEN ?<>'NOT_STARTED' THEN CURRENT_TIMESTAMP ELSE NULL END,CASE WHEN ?='COMPLETED' THEN CURRENT_TIMESTAMP ELSE NULL END,CURRENT_TIMESTAMP)
+          ON CONFLICT(quest_id,person_id) DO UPDATE SET status=excluded.status,progress_json=excluded.progress_json,
+          completed_at=CASE WHEN excluded.status='COMPLETED' THEN CURRENT_TIMESTAMP ELSE quest_progress.completed_at END,updated_at=CURRENT_TIMESTAMP`,
+          [req.params.questId,req.params.personId,status,JSON.stringify(progress),status,status]);
+        res.json({success:true});
+    }catch(e){next(e)}
+});
+
+// TRADERS / NPCs
+app.get('/api/admin/traders', auth, requireCapability('trade:manage'), async (req,res,next)=>{
+    try{
+        const rows=await dbAll(`SELECT t.*,f.name faction_name FROM traders t LEFT JOIN factions f ON f.id=t.faction_id ORDER BY t.name`);
+        res.json(rows);
+    }catch(e){next(e)}
+});
+
+app.post('/api/admin/traders', auth, requireCapability('trade:manage'), async (req,res,next)=>{
+    try{
+        const name=String(req.body.name||'').trim(); if(name.length<2)return res.status(400).json({error:'Informe o nome.'});
+        const result=await dbRun(`INSERT INTO traders(name,trader_type,faction_id,location,active,buy_categories_json,sell_categories_json,quest_ids_json,notes)
+          VALUES (?,?,?,?,?,?,?,?,?)`,[
+            name,String(req.body.trader_type||'TRADER').toUpperCase(),req.body.faction_id?Number(req.body.faction_id):null,String(req.body.location||'').trim(),
+            Number(req.body.active??1)?1:0,JSON.stringify(req.body.buy_categories||[]),JSON.stringify(req.body.sell_categories||[]),JSON.stringify(req.body.quest_ids||[]),String(req.body.notes||'').trim()
+        ]);
+        await auditLog({userId:req.user.id,action:'CREATE_TRADER',entity:'traders',entityId:result.lastID,metadata:{name}});
+        res.status(201).json({success:true,id:result.lastID});
+    }catch(e){next(e)}
+});
+
+app.put('/api/admin/traders/:id', auth, requireCapability('trade:manage'), async (req,res,next)=>{
+    try{
+        const current=await dbGet(`SELECT * FROM traders WHERE id=?`,[req.params.id]); if(!current)return res.status(404).json({error:'Trader não encontrado.'});
+        await dbRun(`UPDATE traders SET name=?,trader_type=?,faction_id=?,location=?,active=?,buy_categories_json=?,sell_categories_json=?,quest_ids_json=?,notes=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,[
+            String(req.body.name||current.name).trim(),String(req.body.trader_type||current.trader_type).toUpperCase(),
+            req.body.faction_id?Number(req.body.faction_id):null,String(req.body.location??current.location).trim(),Number(req.body.active??current.active)?1:0,
+            JSON.stringify(req.body.buy_categories||JSON.parse(current.buy_categories_json||'[]')),JSON.stringify(req.body.sell_categories||JSON.parse(current.sell_categories_json||'[]')),
+            JSON.stringify(req.body.quest_ids||JSON.parse(current.quest_ids_json||'[]')),String(req.body.notes??current.notes).trim(),req.params.id
+        ]);
+        res.json({success:true});
+    }catch(e){next(e)}
+});
+
+app.delete('/api/admin/traders/:id', auth, requireSuperAdminDelete, async (req,res,next)=>{
+    try{await dbRun(`DELETE FROM traders WHERE id=?`,[req.params.id]);res.json({success:true})}catch(e){next(e)}
+});
+
+// --- OBLIVION CONTROL / DAYZ CONTROL-PLANE ---
+// These routes manage panel drafts and release metadata only. They do not write to Qonzer,
+// Workshop, DayZ Runtime/, PBOs or server storage.
+async function readOblivionSettings() {
+    const rows = await dbAll(`SELECT key,value,updated_at FROM server_settings WHERE key LIKE 'obc.%' ORDER BY key`);
+    return Object.fromEntries(rows.map(r => [r.key, { value:r.value, updated_at:r.updated_at }]));
+}
+
+app.get('/api/admin/oblivion/overview', auth, requireCapability('server:panel','oblivion:read','oblivion:manage'), async (req,res,next)=>{
+    try{
+        const settings = await readOblivionSettings();
+        const traders = await dbAll(`SELECT t.*,(SELECT COUNT(*) FROM oblivion_trader_rules r WHERE r.trader_id=t.trader_id) rule_count FROM oblivion_traders t ORDER BY CASE trader_id WHEN 'skad' THEN 1 WHEN 'yanov' THEN 2 WHEN 'bandit' THEN 3 WHEN 'duty' THEN 4 WHEN 'merc' THEN 5 ELSE 9 END, trader_id`);
+        const ruleCount = await dbGet(`SELECT COUNT(*) count FROM oblivion_trader_rules`);
+        const activeOverlayCount = await dbGet(`SELECT COUNT(*) count FROM oblivion_traders WHERE catalog_override_enabled=1`);
+        const latestRelease = await dbGet(`SELECT id,release_code,status,created_at,approved_at FROM oblivion_releases ORDER BY id DESC LIMIT 1`);
+        const tradeEvents = await dbGet(`SELECT COUNT(*) count FROM commerce_transactions`);
+        const bridgeConfigured = !!String(process.env.OBLIVION_BRIDGE_URL || '').trim();
+        res.json({
+            integration:{
+                releaseCandidate: settings['obc.release_candidate']?.value || 'V1.6',
+                bridgeStatus: bridgeConfigured ? (settings['obc.bridge_status']?.value || 'CONFIGURED_NOT_VERIFIED') : 'NOT_CONNECTED',
+                bridgeConfigured,
+                qonzerStatus: settings['obc.qonzer_status']?.value || 'NOT_INSTALLED',
+                workshopStatus: settings['obc.workshop_status']?.value || 'NOT_PUBLISHED',
+                pricesActive: String(settings['obc.prices_active']?.value || 'false').toLowerCase()==='true',
+                catalogOverridesDefault: String(settings['obc.catalog_overrides_default']?.value || 'false').toLowerCase()==='true'
+            },
+            counts:{traders:traders.length,rules:Number(ruleCount.count||0),activeOverlays:Number(activeOverlayCount.count||0),siteTradeEvents:Number(tradeEvents.count||0)},
+            traders,
+            latestRelease
+        });
+    }catch(e){next(e)}
+});
+
+app.get('/api/admin/oblivion/traders', auth, requireCapability('server:panel','oblivion:read','oblivion:manage'), async (req,res,next)=>{
+    try{
+        const rows=await dbAll(`SELECT t.*,(SELECT COUNT(*) FROM oblivion_trader_rules r WHERE r.trader_id=t.trader_id) rule_count FROM oblivion_traders t ORDER BY t.name COLLATE NOCASE`);
+        res.json(rows);
+    }catch(e){next(e)}
+});
+
+app.put('/api/admin/oblivion/traders/:traderId', auth, requireCapability('oblivion:manage'), async (req,res,next)=>{
+    try{
+        const traderId=String(req.params.traderId||'').trim().toLowerCase();
+        const current=await dbGet(`SELECT * FROM oblivion_traders WHERE trader_id=?`,[traderId]);
+        if(!current)return res.status(404).json({error:'Trader mapeado não encontrado.'});
+        const overlayMode=['selective','replace'].includes(String(req.body.overlay_mode||current.overlay_mode).toLowerCase())?String(req.body.overlay_mode||current.overlay_mode).toLowerCase():'selective';
+        const enabled=Number(req.body.catalog_override_enabled??current.catalog_override_enabled)?1:0;
+        const location=String(req.body.location_label??current.location_label).trim().slice(0,160);
+        const notes=String(req.body.notes??current.notes).trim().slice(0,1000);
+        await dbRun(`UPDATE oblivion_traders SET catalog_override_enabled=?,overlay_mode=?,location_label=?,notes=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE trader_id=?`,[enabled,overlayMode,location,notes,req.user.id,traderId]);
+        await auditLog({userId:req.user.id,action:'UPDATE_OBC_TRADER_DRAFT',entity:'oblivion_traders',metadata:{traderId,catalogOverrideEnabled:enabled,overlayMode}});
+        res.json({success:true,appliedToServer:false,message:'Rascunho salvo no painel. Nenhuma alteração foi aplicada ao DayZ/Qonzer.'});
+    }catch(e){next(e)}
+});
+
+app.get('/api/admin/oblivion/rules', auth, requireCapability('server:panel','oblivion:read','oblivion:manage'), async (req,res,next)=>{
+    try{
+        const traderId=String(req.query.trader_id||'').trim().toLowerCase();
+        const params=[]; let where='';
+        if(traderId){where='WHERE r.trader_id=?';params.push(traderId)}
+        const rows=await dbAll(`SELECT r.*,t.name trader_name,t.entity_classname FROM oblivion_trader_rules r JOIN oblivion_traders t ON t.trader_id=r.trader_id ${where} ORDER BY t.name,r.item_name`,params);
+        res.json(rows);
+    }catch(e){next(e)}
+});
+
+function normalizeOblivionRule(body){
+    const classname=String(body.classname||'').trim();
+    const itemName=String(body.item_name||body.name||classname).trim();
+    if(!/^[A-Za-z0-9_]{2,120}$/.test(classname)) return {error:'Classname inválido.'};
+    if(itemName.length<2||itemName.length>160)return {error:'Nome do item inválido.'};
+    const buyPrice=Number(body.buy_price||0),sellPrice=Number(body.sell_price||0);
+    if(!Number.isFinite(buyPrice)||!Number.isFinite(sellPrice)||buyPrice<0||sellPrice<0)return {error:'Preço inválido.'};
+    const stockMode=String(body.stock_mode||'infinite').toLowerCase()==='finite'?'finite':'infinite';
+    const stock=stockMode==='finite'?Math.max(0,Math.floor(Number(body.stock||0))):-1;
+    return {value:{
+        item_name:itemName,classname,category:String(body.category||'GERAL').trim().toUpperCase().slice(0,80),
+        enabled:Number(body.enabled??1)?1:0,buy_enabled:Number(body.buy_enabled??0)?1:0,sell_enabled:Number(body.sell_enabled??1)?1:0,
+        buy_price:buyPrice,sell_price:sellPrice,stock_mode:stockMode,stock,
+        reputation_required:Math.max(0,Math.floor(Number(body.reputation_required||0))),
+        max_quantity:Math.max(1,Math.min(999,Math.floor(Number(body.max_quantity||1)))),
+        notes:String(body.notes||'').trim().slice(0,1000)
+    }};
+}
+
+app.post('/api/admin/oblivion/traders/:traderId/rules', auth, requireCapability('oblivion:manage'), upload.single('photo'), async (req,res,next)=>{
+    try{
+        const traderId=String(req.params.traderId||'').trim().toLowerCase();
+        if(!await dbGet(`SELECT trader_id FROM oblivion_traders WHERE trader_id=?`,[traderId]))return res.status(404).json({error:'Trader não encontrado.'});
+        const parsed=normalizeOblivionRule(req.body);if(parsed.error)return res.status(400).json({error:parsed.error}); const v=parsed.value;
+        const result=await dbRun(`INSERT INTO oblivion_trader_rules(trader_id,item_name,classname,category,enabled,buy_enabled,sell_enabled,buy_price,sell_price,stock_mode,stock,reputation_required,max_quantity,source_of_truth,photo,notes,created_by)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'OBLIVIONCONTROL_CONFIG',?,?,?)`,[traderId,v.item_name,v.classname,v.category,v.enabled,v.buy_enabled,v.sell_enabled,v.buy_price,v.sell_price,v.stock_mode,v.stock,v.reputation_required,v.max_quantity,req.file?`/uploads/${req.file.filename}`:'',v.notes,req.user.id]);
+        await auditLog({userId:req.user.id,action:'CREATE_OBC_TRADE_RULE_DRAFT',entity:'oblivion_trader_rules',entityId:result.lastID,metadata:{traderId,classname:v.classname}});
+        res.status(201).json({success:true,id:result.lastID,appliedToServer:false});
+    }catch(e){if(String(e.message).includes('UNIQUE'))return res.status(409).json({error:'Esse classname já possui regra nesse trader.'});next(e)}
+});
+
+app.put('/api/admin/oblivion/rules/:id', auth, requireCapability('oblivion:manage'), upload.single('photo'), async (req,res,next)=>{
+    try{
+        const current=await dbGet(`SELECT * FROM oblivion_trader_rules WHERE id=?`,[req.params.id]);if(!current)return res.status(404).json({error:'Regra não encontrada.'});
+        const parsed=normalizeOblivionRule({...current,...req.body,classname:current.classname});if(parsed.error)return res.status(400).json({error:parsed.error}); const v=parsed.value;
+        const photo=req.file?`/uploads/${req.file.filename}`:current.photo;
+        await dbRun(`UPDATE oblivion_trader_rules SET item_name=?,category=?,enabled=?,buy_enabled=?,sell_enabled=?,buy_price=?,sell_price=?,stock_mode=?,stock=?,reputation_required=?,max_quantity=?,source_of_truth='OBLIVIONCONTROL_CONFIG',photo=?,notes=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,[v.item_name,v.category,v.enabled,v.buy_enabled,v.sell_enabled,v.buy_price,v.sell_price,v.stock_mode,v.stock,v.reputation_required,v.max_quantity,photo,v.notes,req.params.id]);
+        await auditLog({userId:req.user.id,action:'UPDATE_OBC_TRADE_RULE_DRAFT',entity:'oblivion_trader_rules',entityId:req.params.id,metadata:{traderId:current.trader_id,classname:current.classname}});
+        res.json({success:true,appliedToServer:false});
+    }catch(e){next(e)}
+});
+
+app.delete('/api/admin/oblivion/rules/:id', auth, requireSuperAdminDelete, async (req,res,next)=>{
+    try{
+        const current=await dbGet(`SELECT * FROM oblivion_trader_rules WHERE id=?`,[req.params.id]);if(!current)return res.status(404).json({error:'Regra não encontrada.'});
+        await dbRun(`DELETE FROM oblivion_trader_rules WHERE id=?`,[req.params.id]);
+        await auditLog({userId:req.user.id,action:'DELETE_OBC_TRADE_RULE_DRAFT',entity:'oblivion_trader_rules',entityId:req.params.id,metadata:{traderId:current.trader_id,classname:current.classname}});
+        res.json({success:true,appliedToServer:false});
+    }catch(e){next(e)}
+});
+
+app.get('/api/admin/oblivion/releases', auth, requireCapability('server:panel','oblivion:read','releases:manage'), async (req,res,next)=>{
+    try{res.json(await dbAll(`SELECT id,release_code,status,notes,created_at,approved_at FROM oblivion_releases ORDER BY id DESC LIMIT 100`))}catch(e){next(e)}
+});
+
+app.post('/api/admin/oblivion/releases', auth, requireCapability('releases:manage'), async (req,res,next)=>{
+    try{
+        const traders=await dbAll(`SELECT trader_id,name,entity_classname,faction_code,location_label,currency,catalog_override_enabled,overlay_mode,source_of_truth,validation_status,notes FROM oblivion_traders ORDER BY trader_id`);
+        const rules=await dbAll(`SELECT trader_id,item_name,classname,category,enabled,buy_enabled,sell_enabled,buy_price,sell_price,stock_mode,stock,reputation_required,max_quantity,source_of_truth,notes FROM oblivion_trader_rules ORDER BY trader_id,classname`);
+        const settings=await readOblivionSettings();
+        const releaseCode=`OBC-WEB-${new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,14)}`;
+        const payload={schemaVersion:1,mode:'export-only',releaseId:releaseCode,createdAt:new Date().toISOString(),pricesActive:false,traders,rules,settings:Object.fromEntries(Object.entries(settings).map(([k,v])=>[k,v.value]))};
+        const result=await dbRun(`INSERT INTO oblivion_releases(release_code,status,payload_json,notes,created_by) VALUES (?,'DRAFT',?,?,?)`,[releaseCode,JSON.stringify(payload),String(req.body.notes||'').trim().slice(0,1000),req.user.id]);
+        await auditLog({userId:req.user.id,action:'CREATE_OBC_RELEASE_DRAFT',entity:'oblivion_releases',entityId:result.lastID,metadata:{releaseCode}});
+        res.status(201).json({success:true,id:result.lastID,releaseCode,status:'DRAFT',appliedToServer:false});
+    }catch(e){next(e)}
+});
+
+app.put('/api/admin/oblivion/releases/:id/status', auth, requireCapability('releases:manage'), async (req,res,next)=>{
+    try{
+        const status=String(req.body.status||'').toUpperCase();
+        if(!['DRAFT','APPROVED','ARCHIVED'].includes(status))return res.status(400).json({error:'Status inválido. APPLIED/ONLINE só pode vir do bridge real.'});
+        const current=await dbGet(`SELECT * FROM oblivion_releases WHERE id=?`,[req.params.id]);if(!current)return res.status(404).json({error:'Release não encontrada.'});
+        await dbRun(`UPDATE oblivion_releases SET status=?,approved_at=CASE WHEN ?='APPROVED' THEN CURRENT_TIMESTAMP ELSE approved_at END WHERE id=?`,[status,status,req.params.id]);
+        await auditLog({userId:req.user.id,action:'UPDATE_OBC_RELEASE_STATUS',entity:'oblivion_releases',entityId:req.params.id,metadata:{releaseCode:current.release_code,status}});
+        res.json({success:true,status,appliedToServer:false});
+    }catch(e){next(e)}
+});
+
+app.get('/api/admin/oblivion/releases/:id/export', auth, requireCapability('server:panel','oblivion:read','releases:manage'), async (req,res,next)=>{
+    try{
+        const row=await dbGet(`SELECT release_code,payload_json FROM oblivion_releases WHERE id=?`,[req.params.id]);if(!row)return res.status(404).json({error:'Release não encontrada.'});
+        res.setHeader('Content-Type','application/json; charset=utf-8');
+        res.setHeader('Content-Disposition',`attachment; filename="${row.release_code}.json"`);
+        res.send(row.payload_json);
+    }catch(e){next(e)}
+});
+
+// ECONOMY / OPERATIONS / SYSTEM
+app.get('/api/admin/economy-overview' , auth, requireCapability('economy:read'), async (req,res,next)=>{
+    try{
+        const factions=await dbAll(`SELECT f.id,f.name,
+          COALESCE(SUM(CASE WHEN b.type='entrada' THEN b.amount ELSE -b.amount END),0) operational_balance
+          FROM factions f LEFT JOIN faction_bank_transactions b ON b.faction_id=f.id GROUP BY f.id ORDER BY f.id`);
+        const general=await dbAll(`SELECT faction_id,COALESCE(SUM(CASE WHEN type='entrada' THEN amount ELSE -amount END),0) balance FROM faction_general_bank_transactions GROUP BY faction_id`);
+        const genMap=Object.fromEntries(general.map(x=>[x.faction_id,Number(x.balance||0)]));
+        const people=await dbGet(`SELECT COUNT(*) people,COALESCE(SUM(saldo_ru),0) total_personal_money,COALESCE(AVG(reputacao),0) avg_reputation FROM stalkers`);
+        const commerce=await dbGet(`SELECT COUNT(*) transactions,COALESCE(SUM(ABS(money_delta)),0) volume FROM commerce_transactions`);
+        res.json({factions:factions.map(x=>({...x,general_balance:genMap[x.id]||0})),people,commerce});
+    }catch(e){next(e)}
+});
+
+app.get('/api/admin/operations-overview', auth, requireCapability('operations:global'), async (req,res,next)=>{
+    try{
+        const missions=await dbAll(`SELECT status,COUNT(*) qty FROM missoes GROUP BY status`);
+        const contracts=await dbAll(`SELECT status,COUNT(*) qty FROM mercenary_contracts GROUP BY status`);
+        const quests=await dbAll(`SELECT status,COUNT(*) qty FROM quests GROUP BY status`);
+        const experiments=await dbAll(`SELECT status,COUNT(*) qty FROM rp_experiments GROUP BY status`);
+        res.json({missions,contracts,quests,experiments});
+    }catch(e){next(e)}
+});
+
+app.get('/api/admin/system-health', auth, requireCapability('config:manage'), async (req,res,next)=>{
+    try{
+        const tables=(await dbAll(`SELECT name FROM sqlite_master WHERE type='table'`)).map(x=>x.name);
+        const settings=await dbAll(`SELECT key,value,updated_at FROM server_settings ORDER BY key`);
+        res.json({
+            service:'stalker-faction-network',
+            node:process.version,
+            uptimeSeconds:Math.floor(process.uptime()),
+            database:DB_PATH,
+            tableCount:tables.length,
+            settings
+        });
+    }catch(e){next(e)}
+});
+
+app.put('/api/admin/system-settings/:key', auth, requireCapability('config:manage'), async (req,res,next)=>{
+    try{
+        const key=String(req.params.key||'').trim();
+        if(!/^[a-zA-Z0-9_.:-]{2,80}$/.test(key))return res.status(400).json({error:'Chave inválida.'});
+        if(key.toLowerCase().startsWith('obc.')) return res.status(400).json({error:'Configurações Oblivion Control são gerenciadas pela Central Servidor & Oblivion e pelo bridge validado.'});
+        const value=String(req.body.value??'');
+        await dbRun(`INSERT INTO server_settings(key,value,updated_by,updated_at) VALUES (?,?,?,CURRENT_TIMESTAMP)
+          ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP`,[key,value,req.user.id]);
+        await auditLog({userId:req.user.id,action:'UPDATE_SERVER_SETTING',entity:'server_settings',metadata:{key}});
+        res.json({success:true});
+    }catch(e){next(e)}
+});
+
+// --- GLOBAL TRADE CATALOG ---
+app.get('/api/trade-catalog', auth, async (req,res,next)=>{
+    try{
+        const channel=String(req.query.channel||'ALL').toUpperCase();
+        const rows=await dbAll(`SELECT * FROM trade_catalog ORDER BY active DESC, category COLLATE NOCASE, name COLLATE NOCASE`);
+        const filtered=rows.filter(r=>{
+            let channels=['ALL'];
+            try{channels=JSON.parse(r.channels_json||'["ALL"]')}catch(_){}
+            channels=(Array.isArray(channels)?channels:['ALL']).map(v=>String(v).toUpperCase());
+            return channel==='ADMIN'||channels.includes('ALL')||channels.includes(channel);
+        });
+        res.json(filtered);
+    }catch(e){next(e)}
+});
+
+app.post('/api/admin/trade-catalog', auth, upload.single('foto'), async (req,res,next)=>{
+    try{
+        if(req.user.role!=='super_admin'){const caps=await getEffectiveCapabilities(req.user.id,req.user.role);if(!caps.includes('trade:manage'))return res.status(403).json({error:'Sem permissão para administrar o catálogo global.'});}
+        let channels=['ALL'];try{channels=JSON.parse(req.body.channels||'["ALL"]')}catch(_){}
+        if(!Array.isArray(channels)||!channels.length)channels=['ALL'];
+        const name=String(req.body.name||'').trim();
+        if(name.length<2)return res.status(400).json({error:'Informe o nome do item.'});
+        const result=await dbRun(`INSERT INTO trade_catalog
+            (name,category,buy_price,sell_price,reputation_reward,stock,track_stock,active,photo,notes,channels_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)`,[
+            name,String(req.body.category||'GERAL').trim().toUpperCase(),Number(req.body.buy_price||0),Number(req.body.sell_price||0),
+            Number(req.body.reputation_reward||0),Number(req.body.stock||0),Number(req.body.track_stock||0)?1:0,
+            req.body.active===undefined?1:(Number(req.body.active)?1:0),req.file?`/uploads/${req.file.filename}`:'',String(req.body.notes||'').trim(),JSON.stringify(channels)
+        ]);
+        await auditLog({userId:req.user.id,factionId:null,action:'CREATE_GLOBAL_TRADE_ITEM',entity:'trade_catalog',entityId:result.lastID,metadata:{name}});
+        res.status(201).json({success:true,id:result.lastID});
+    }catch(e){if(String(e.message).includes('UNIQUE'))return res.status(409).json({error:'Já existe um item com esse nome.'});next(e)}
+});
+
+app.put('/api/admin/trade-catalog/:id', auth, upload.single('foto'), async (req,res,next)=>{
+    try{
+        if(req.user.role!=='super_admin'){const caps=await getEffectiveCapabilities(req.user.id,req.user.role);if(!caps.includes('trade:manage'))return res.status(403).json({error:'Sem permissão para administrar o catálogo global.'});}
+        const current=await dbGet(`SELECT * FROM trade_catalog WHERE id=?`,[req.params.id]);
+        if(!current)return res.status(404).json({error:'Item não encontrado.'});
+        let channels=['ALL'];try{channels=JSON.parse(req.body.channels||current.channels_json||'["ALL"]')}catch(_){}
+        const photo=req.file?`/uploads/${req.file.filename}`:current.photo;
+        await dbRun(`UPDATE trade_catalog SET name=?,category=?,buy_price=?,sell_price=?,reputation_reward=?,stock=?,track_stock=?,active=?,photo=?,notes=?,channels_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,[
+            String(req.body.name||current.name).trim(),String(req.body.category||current.category).trim().toUpperCase(),Number(req.body.buy_price??current.buy_price),Number(req.body.sell_price??current.sell_price),
+            Number(req.body.reputation_reward??current.reputation_reward),Number(req.body.stock??current.stock),Number(req.body.track_stock??current.track_stock)?1:0,Number(req.body.active??current.active)?1:0,
+            photo,String(req.body.notes??current.notes).trim(),JSON.stringify(Array.isArray(channels)&&channels.length?channels:['ALL']),req.params.id
+        ]);
+        await auditLog({userId:req.user.id,factionId:null,action:'UPDATE_GLOBAL_TRADE_ITEM',entity:'trade_catalog',entityId:req.params.id,metadata:{name:req.body.name||current.name}});
+        res.json({success:true});
+    }catch(e){next(e)}
+});
+
+app.delete('/api/admin/trade-catalog/:id', auth, requireSuperAdminDelete, async (req,res,next)=>{
+    try{
+        const row=await dbGet(`SELECT id,name FROM trade_catalog WHERE id=?`,[req.params.id]);
+        if(!row)return res.status(404).json({error:'Item não encontrado.'});
+        await dbRun(`DELETE FROM trade_catalog WHERE id=?`,[req.params.id]);
+        await auditLog({userId:req.user.id,factionId:null,action:'DELETE_GLOBAL_TRADE_ITEM',entity:'trade_catalog',entityId:req.params.id,metadata:{name:row.name}});
+        res.json({success:true});
+    }catch(e){next(e)}
+});
+
 app.get('/api/commerce/people', auth, async (req, res, next) => {
     try {
         const moduleCode = String(req.query.module || '').trim().toLowerCase();
@@ -2689,6 +3383,7 @@ app.post('/api/commerce/transactions', auth, async (req, res, next) => {
             personId: z.coerce.number().int().positive(),
             operationType: z.enum(['FACCAO_COMPRA','FACCAO_VENDE','RECOMPENSA']),
             merchandise: z.string().trim().min(2).max(160),
+            catalogId: z.coerce.number().int().positive().optional(),
             quantity: z.coerce.number().positive().max(100000).default(1),
             money: z.coerce.number().min(0).max(100000000).default(0),
             reputation: z.coerce.number().int().min(0).max(1000000).default(0),
@@ -2700,6 +3395,24 @@ app.post('/api/commerce/transactions', auth, async (req, res, next) => {
         const moduleCode=d.module.toLowerCase();
         const scope=await resolveCommerceScope(req,moduleCode);
         if(scope.error) return res.status(403).json({error:scope.error});
+
+        let catalogItem=null;
+        if(d.catalogId){
+            catalogItem=await dbGet(`SELECT * FROM trade_catalog WHERE id=? AND active=1`,[d.catalogId]);
+            if(!catalogItem)return res.status(404).json({error:'Item do catálogo não encontrado ou desativado.'});
+            let channels=['ALL'];try{channels=JSON.parse(catalogItem.channels_json||'["ALL"]')}catch(_){}
+            const channel=String(scope.faction.code||'').toUpperCase();
+            if(!channels.map(v=>String(v).toUpperCase()).includes('ALL')&&!channels.map(v=>String(v).toUpperCase()).includes(channel)){
+                return res.status(403).json({error:'Este item não está disponível neste trade.'});
+            }
+            d.merchandise=catalogItem.name;
+            if(d.operationType==='FACCAO_COMPRA') d.money=Number(catalogItem.buy_price||0)*Number(d.quantity||1);
+            if(d.operationType==='FACCAO_VENDE') d.money=Number(catalogItem.sell_price||0)*Number(d.quantity||1);
+            if(d.reputation<=0) d.reputation=Number(catalogItem.reputation_reward||0);
+            if(d.operationType==='FACCAO_VENDE' && Number(catalogItem.track_stock||0)===1 && Number(d.quantity||1)>Number(catalogItem.stock||0)){
+                return res.status(400).json({error:`Estoque insuficiente. Disponível: ${Number(catalogItem.stock||0)}.`});
+            }
+        }
 
         if(d.money<=0 && d.reputation<=0){
             return res.status(400).json({error:'Informe uma recompensa/valor em RU, reputação ou ambos.'});
@@ -2741,6 +3454,12 @@ app.post('/api/commerce/transactions', auth, async (req, res, next) => {
         try{
             await dbRun(`UPDATE stalkers SET saldo_ru=?, reputacao=? WHERE id=? AND faction_id=?`,
                 [nextBalance,nextRep,person.id,scope.factionId]);
+
+            if(catalogItem && Number(catalogItem.track_stock||0)===1){
+                const qty=Number(d.quantity||1);
+                const delta=d.operationType==='FACCAO_COMPRA'?qty:(d.operationType==='FACCAO_VENDE'?-qty:0);
+                if(delta!==0) await dbRun(`UPDATE trade_catalog SET stock=stock+?,updated_at=CURRENT_TIMESTAMP WHERE id=?`,[delta,catalogItem.id]);
+            }
 
             if(bankType){
                 const reason=`${moduleCode.toUpperCase()} • ${d.operationType} • ${d.merchandise} • ${person.codinome||person.nome}`;

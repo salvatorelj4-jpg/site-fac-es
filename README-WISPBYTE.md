@@ -48,3 +48,10 @@ V24 — CORREÇÃO DE CRIAÇÃO DE USUÁRIOS
 - Super Admin dentro de uma facção agora cria o usuário automaticamente na facção selecionada.
 - Painel Admin continua aceitando escolha explícita da facção.
 - PUT /api/users agora aceita atualizações parciais, evitando apagar nome/login/cargo ao apenas ativar ou desativar.
+
+
+## V25 — Central Global de Comércio
+- Nova aba no Painel Administrativo para controlar o catálogo de TODO o sistema, não só facções.
+- Compra, venda, reputação, estoque, foto, status e canais de disponibilidade configuráveis.
+- Trades existentes consomem o catálogo global.
+- Categoria PARTES DE MUTANTES já vem com itens iniciais editáveis (Bloodsucker, Chimera, Snork, Burer, Controller, Pseudogigante, Pseudocão, Psi-Dog, Javali e Flesh).

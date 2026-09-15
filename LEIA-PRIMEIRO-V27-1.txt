@@ -1,0 +1,13 @@
+OBLIVION ADMIN UI V27.1
+
+Esta versão corrige rollout/cache da V27.
+
+Sinais de que a versão correta está ativa:
+- /admin.html mostra uma barra lateral administrativa à esquerda.
+- título principal: CENTRAL ADMINISTRATIVA.
+- selo visível: UI V27.1.
+- rodapé visual discreto: OBLIVION CONTROL • ADMIN UI V27.1.
+- /admin-ui-version.json retorna ui=27.1.
+- /api/admin/ui-version-public retorna ui=27.1 após reiniciar o Node.
+
+Se ainda aparecer CENTRAL DE COMANDO ADMINISTRATIVO, a hospedagem está servindo o admin.html antigo.
