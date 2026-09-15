@@ -1,0 +1,13 @@
+{
+  "version": "1.7.2",
+  "transport": "SFTP",
+  "remoteRoot": "/instance/OblivionControl",
+  "allowlistCount": 7,
+  "realCredentialsUsed": false,
+  "qonzerChanged": false,
+  "wispbyteChanged": false,
+  "workshopChanged": false,
+  "thirdPartyPboChanged": false,
+  "questSystemIncluded": false,
+  "tests": "node --test tests/sftp-agent.test.mjs"
+}
