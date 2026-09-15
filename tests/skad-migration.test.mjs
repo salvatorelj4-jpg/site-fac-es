@@ -1,0 +1,19 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import sqlite3 from 'sqlite3';
+import { migrate, rollback } from '../tools/migrate-skad-catalog.mjs';
+
+const schema = `CREATE TABLE oblivion_trader_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, trader_id TEXT NOT NULL, item_name TEXT NOT NULL, classname TEXT NOT NULL, category TEXT NOT NULL DEFAULT 'GERAL', enabled INTEGER NOT NULL DEFAULT 1, buy_enabled INTEGER NOT NULL DEFAULT 0, sell_enabled INTEGER NOT NULL DEFAULT 1, buy_price REAL NOT NULL DEFAULT 0, sell_price REAL NOT NULL DEFAULT 0, stock_mode TEXT NOT NULL DEFAULT 'infinite', stock INTEGER NOT NULL DEFAULT -1, reputation_required INTEGER NOT NULL DEFAULT 0, max_quantity INTEGER NOT NULL DEFAULT 1, source_of_truth TEXT NOT NULL DEFAULT 'OBLIVIONCONTROL_CONFIG', photo TEXT DEFAULT '', notes TEXT DEFAULT '', created_by INTEGER, created_at TEXT DEFAULT 'created', updated_at TEXT DEFAULT 'updated', UNIQUE(trader_id, classname))`;
+const open = (file) => new Promise((resolve, reject) => { const db = new sqlite3.Database(file, (error) => error ? reject(error) : resolve(db)); });
+const run = (db, sql, params = []) => new Promise((resolve, reject) => db.run(sql, params, function (error) { error ? reject(error) : resolve(this); }));
+const all = (db, sql, params = []) => new Promise((resolve, reject) => db.all(sql, params, (error, rows) => error ? reject(error) : resolve(rows)));
+const close = (db) => new Promise((resolve, reject) => db.close((error) => error ? reject(error) : resolve()));
+async function fixture({ populated = true } = {}) { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skad-migration-')); const dbPath = path.join(dir, 'database.db'); const backupPath = path.join(dir, 'skad-backup.json'); const db = await open(dbPath); await run(db, schema); if (populated) { await run(db, "INSERT INTO oblivion_trader_rules (trader_id,item_name,classname,category,enabled,buy_enabled,sell_enabled,buy_price,sell_price) VALUES ('skad','Old','OldSkad','Old',1,1,1,10,20)"); await run(db, "INSERT INTO oblivion_trader_rules (trader_id,item_name,classname,category) VALUES ('yanov','Yanov item','YanovItem','Comidas')"); } await close(db); return { dir, dbPath, backupPath }; }
+async function rows(dbPath, trader = 'skad') { const db = await open(dbPath); const result = await all(db, 'SELECT * FROM oblivion_trader_rules WHERE trader_id=? ORDER BY id', [trader]); await close(db); return result; }
+
+test('populated DB migration is transactional and scoped to Skad', async () => { const f = await fixture(); const result = await migrate({ ...f }); assert.equal(result.SKAD_ITEMS, 345); assert.ok(fs.existsSync(f.backupPath)); const skad = await rows(f.dbPath); assert.equal(skad.length, 345); assert.equal(new Set(skad.map((x) => x.classname)).size, 345); assert.equal(skad.filter((x) => x.enabled || x.buy_enabled || x.sell_enabled || x.buy_price !== 0 || x.sell_price !== 0).length, 0); assert.equal((await rows(f.dbPath, 'yanov')).length, 1); });
+test('empty OBC table is compatible and second run is idempotent', async () => { const f = await fixture({ populated: false }); const first = await migrate({ ...f }); const second = await migrate({ ...f }); assert.equal(first.SKAD_ITEMS, 345); assert.equal(second.SKAD_ROWS_CHANGED, 0); assert.equal(second.SKAD_ITEMS, 345); assert.equal((await rows(f.dbPath)).length, 345); });
+test('rollback restores Skad rows exactly and leaves other traders', async () => { const f = await fixture(); const before = await rows(f.dbPath, 'skad'); await migrate({ ...f }); const restored = await rollback({ dbPath: f.dbPath, backupPath: f.backupPath }); assert.equal(restored.restoredRows, before.length); assert.deepEqual(await rows(f.dbPath, 'skad'), before); assert.equal((await rows(f.dbPath, 'yanov')).length, 1); });

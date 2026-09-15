@@ -1,0 +1,31 @@
+{
+  "traderId": "skad",
+  "source": "owner message (3).txt",
+  "replacementCount": 345,
+  "duplicateClassnames": 0,
+  "categoriesPreservedInOrder": [
+    "Comidas",
+    "Eletronicos",
+    "Trecos e Tralhas",
+    "Partes de Mutantes/Trofeus (OB)",
+    "Equipamentos de Protecao",
+    "Roupas",
+    "Acessorios Roupa",
+    "Coletes",
+    "Mochilas",
+    "Medicina",
+    "Pistolas",
+    "Municoes",
+    "Carregadores",
+    "SMGs",
+    "Rifles",
+    "Escopetas",
+    "Facas"
+  ],
+  "enabled": false,
+  "buyEnabled": false,
+  "sellEnabled": false,
+  "buyPrice": 0,
+  "sellPrice": 0,
+  "notes": "Os preços podem ser configurados posteriormente pelo painel. A fonte de catálogo foi alterada; banco persistido e produção não foram tocados."
+}
