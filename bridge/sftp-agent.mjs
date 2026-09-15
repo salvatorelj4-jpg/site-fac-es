@@ -111,7 +111,9 @@ export class SftpBridgeAgent {
     if (!this.transport) this.transport = await createSsh2SftpTransport();
     if (!this.hostFingerprint && process.env.NODE_ENV !== 'test') throw new Error('SFTP_HOST_FINGERPRINT_REQUIRED');
     try {
-      await this.transport.connect({ host: process.env.OBC_QONZER_SFTP_HOST, port: Number(process.env.OBC_QONZER_SFTP_PORT || 22), username: process.env.OBC_QONZER_SFTP_USERNAME, password: process.env.OBC_QONZER_SFTP_PASSWORD, hostHash: 'sha256', hostVerifier: (fingerprint) => this.verifyHostKey(fingerprint) });
+      // Omit hostHash so ssh2 supplies the raw host-key Buffer; we compute the
+      // OpenSSH-compatible SHA256:<base64> fingerprint ourselves.
+      await this.transport.connect({ host: process.env.OBC_QONZER_SFTP_HOST, port: Number(process.env.OBC_QONZER_SFTP_PORT || 22), username: process.env.OBC_QONZER_SFTP_USERNAME, password: process.env.OBC_QONZER_SFTP_PASSWORD, hostVerifier: (fingerprint) => this.verifyHostKey(fingerprint) });
       this.connected = true;
     } catch (error) {
       this.connected = false;
