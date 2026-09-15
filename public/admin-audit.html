@@ -1,0 +1,18 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="admin-control.css"><title>AUDITORIA</title>
+<style>
+.ctrl-wrap{max-width:1320px;margin:28px auto 70px;padding:42px 18px 20px}
+.ctrl-hero{border:1px solid #17314d;border-top:3px solid #3498db;background:linear-gradient(125deg,#03070b,#071421);padding:22px;margin-bottom:14px}
+.ctrl-hero h1{margin:4px 0;color:#60a5fa;letter-spacing:2px}.ctrl-hero p{color:#718096;margin:0}
+.ctrl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}
+.ctrl-card{background:#03070b;border:1px solid #17314d;padding:15px}
+.ctrl-card h3{color:#60a5fa;margin-top:0}.ctrl-form{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.ctrl-form .full{grid-column:1/-1}.ctrl-form label{font-size:11px;color:#8aa0b5;display:block;margin-bottom:4px;letter-spacing:1px}
+.ctrl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.ctrl-actions button{width:auto}
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}.stat{border:1px solid #17314d;background:#03070b;padding:15px;text-align:center}.stat b{display:block;font-size:25px;color:#60a5fa}.stat small{color:#6f8498}
+.badge2{display:inline-block;padding:3px 7px;border:1px solid #31506d;color:#9cc8ec;font-size:10px;margin:2px}
+@media(max-width:760px){.ctrl-form{grid-template-columns:1fr}.stat-row{grid-template-columns:1fr 1fr}}
+</style>
+</head><body class="admin-control-body"><nav id="mainNav"></nav><div class="admin-control-shell"><aside id="adminRail" class="admin-rail"></aside><main class="admin-main"><div class="ctrl-wrap"><section class="ctrl-hero"><div style="font-size:11px;letter-spacing:3px;color:#3498db">GLOBAL COMMAND / ADMINISTRATOR</div><h1>AUDITORIA</h1><p>Histórico central de ações administrativas e operacionais.</p></section><section class="ctrl-card"><h3>LOG DE AUDITORIA</h3><div id="log">Carregando...</div></section></div></main></div><script src="app.js"></script><script src="admin-control.js"></script><script>
+async function init(){checkAuth();mountAdminRail('audit');injectNav('/admin-audit.html');const rows=await api('/api/audit');log.innerHTML=rows.map(x=>`<div style="border-bottom:1px solid #17314d;padding:9px"><b>${escapeHtml(x.action)}</b> ${x.entity?'em '+escapeHtml(x.entity):''}<br><small>${escapeHtml(x.user_name||x.username||'Sistema')} • ${escapeHtml(x.faction_name||'Global')} • ${formatDateTime(x.created_at)}</small></div>`).join('')||'Nenhum log.'}
+init();
+</script></body></html>

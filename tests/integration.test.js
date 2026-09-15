@@ -393,3 +393,38 @@ describe('DISCORD', () => {
 console.log('\\n=== RUNNING MULTI-FACTION SYSTEM TESTS ===\\n');
 console.log('NOTE: The server must be running on port 3000 before executing tests.');
 console.log('Start the server with: node server.js\\n');
+
+// ==========================================
+// OBLIVION CONTROL ADMIN CONTROL-PLANE
+// ==========================================
+describe('OBLIVION CONTROL ADMIN', () => {
+    it('should expose production-safe integration state to super_admin', async () => {
+        const res = await request('GET', '/api/admin/oblivion/overview', null, adminToken);
+        assert.strictEqual(res.status, 200);
+        assert.ok(res.body.integration);
+        assert.strictEqual(res.body.integration.pricesActive, false);
+        assert.ok(res.body.counts.traders >= 6);
+        assert.ok(res.body.counts.rules >= 500);
+    });
+
+    it('should expose real trader mappings without creating production NPCs', async () => {
+        const res = await request('GET', '/api/admin/oblivion/traders', null, adminToken);
+        assert.strictEqual(res.status, 200);
+        const byId = Object.fromEntries(res.body.map(t => [t.trader_id, t]));
+        assert.strictEqual(byId.skad.entity_classname, 'OG_SkadBorodaVisual');
+        assert.strictEqual(byId.yanov.entity_classname, 'OG_YanovTraderVisual');
+        assert.strictEqual(byId.bandit.entity_classname, 'OG_BanditTraderVisual');
+        assert.strictEqual(byId.duty.entity_classname, 'OG_DutyTraderVisual');
+        assert.strictEqual(byId.merc.entity_classname, 'OG_MercTradeVisual');
+        assert.strictEqual(byId.merc_barter.entity_classname, 'OG_MercBarterNPC');
+    });
+
+    it('should import the V1.6 reference catalog as third-party static data', async () => {
+        const res = await request('GET', '/api/admin/oblivion/rules?trader_id=skad', null, adminToken);
+        assert.strictEqual(res.status, 200);
+        assert.ok(res.body.length >= 200);
+        const canteen = res.body.find(r => r.classname === 'Canteen');
+        assert.ok(canteen);
+        assert.strictEqual(canteen.source_of_truth, 'THIRD_PARTY_STATIC');
+    });
+});

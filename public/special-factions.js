@@ -398,11 +398,11 @@ async function sfRosterDelete(id){
 }
 
 
-let sfCommercePeople=[], sfCommerceTx=[];
+let sfCommercePeople=[], sfCommerceTx=[], sfCommerceCatalog=[];
 async function sfCommerceInit(){
  sfInit();
  if(!sfCanWrite())document.querySelector('.commerce-form').style.display='none';
- await Promise.all([sfCommerceLoadPeople(),sfCommerceLoadHistory()]);
+ await Promise.all([sfCommerceLoadPeople(),sfCommerceLoadHistory(),sfCommerceLoadCatalog()]);
  sfCommerceRewardModeChanged();sfCommerceOperationChanged();
 }
 async function sfCommerceLoadPeople(){
@@ -415,7 +415,7 @@ function sfCommercePersonChanged(){
  if(!p){commercePersonInfo.classList.add('hidden');commercePersonInfo.innerHTML='';return}
  commercePersonInfo.classList.remove('hidden');
  commercePersonInfo.innerHTML=`${p.foto?`<img class="commerce-person-photo" src="${sfEsc(p.foto)}">`:`<div class="commerce-person-photo placeholder">SEM FOTO</div>`}<div><div class="commerce-person-name">${sfEsc(p.codinome||p.nome)}</div><div class="commerce-person-real">${sfEsc(p.nome||'')} • ${sfEsc(p.faccao||sfCfg().name)}</div><div class="commerce-person-values"><span><b>${Number(p.reputacao||0)}</b> REPUTAÇÃO</span><span><b>${sfMoney(p.saldo_ru||0)}</b> SALDO PESSOAL</span></div><div class="sf-meta">Área: ${sfEsc(p.area_atuacao||'-')}</div></div>`;
- sfCommercePreview();
+ if(typeof commerceCatalog!=='undefined'&&commerceCatalog.value)sfCommerceCatalogChanged();else sfCommercePreview();
 }
 function sfCommerceOperationChanged(){
  const op=commerceOperation.value;
@@ -437,6 +437,7 @@ function sfCommercePreview(){
  const nextMoney=Number(p.saldo_ru||0)+delta;const nextRep=Number(p.reputacao||0)+rep;
  commercePreview.innerHTML=`<b>PRÉVIA DO PERSONAGEM</b><span>Saldo: ${sfMoney(p.saldo_ru||0)} → <strong>${sfMoney(nextMoney)}</strong></span><span>Reputação: ${Number(p.reputacao||0)} → <strong>${nextRep}</strong></span>`;
 }
+document.addEventListener('input',e=>{if(e.target.id==='commerceQty'&&typeof commerceCatalog!=='undefined'&&commerceCatalog.value)sfCommerceCatalogChanged()});
 ['commerceMoney','commerceRep'].forEach(id=>document.addEventListener('input',e=>{if(e.target.id===id)sfCommercePreview()}));
 async function sfCommerceSave(){
  const person=sfCommerceSelected();if(!person)return showError('Selecione uma pessoa cadastrada.');
@@ -446,9 +447,9 @@ async function sfCommerceSave(){
  if(money<=0&&rep<=0)return showError('Informe RU, reputação ou ambos.');
  if(commerceOperation.value==='FACCAO_VENDE'&&money>Number(person.saldo_ru||0))return showError(`Saldo pessoal insuficiente: ${sfMoney(person.saldo_ru||0)}.`);
  try{
-  const result=await api('/api/commerce/transactions',{method:'POST',body:{module:window.SF_PAGE.module,personId:person.id,operationType:commerceOperation.value,merchandise:merch,quantity:Number(commerceQty.value||1),money,reputation:rep,notes:commerceNotes.value.trim()}});
+  const result=await api('/api/commerce/transactions',{method:'POST',body:{module:window.SF_PAGE.module,personId:person.id,operationType:commerceOperation.value,merchandise:merch,catalogId:(typeof commerceCatalog!=='undefined'&&commerceCatalog.value)?Number(commerceCatalog.value):undefined,quantity:Number(commerceQty.value||1),money,reputation:rep,notes:commerceNotes.value.trim()}});
   showSuccess('Transação registrada. Saldo e reputação atualizados.');
-  commerceMerch.value='';commerceQty.value=1;commerceMoney.value=0;commerceRep.value=0;commerceNotes.value='';
+  commerceMerch.value='';if(typeof commerceCatalog!=='undefined')commerceCatalog.value='';commerceQty.value=1;commerceMoney.value=0;commerceRep.value=0;commerceNotes.value='';
   await Promise.all([sfCommerceLoadPeople(),sfCommerceLoadHistory()]);
   commercePerson.value=String(result.person.id);sfCommercePersonChanged();
  }catch(e){console.error(e)}

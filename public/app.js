@@ -400,18 +400,20 @@ function buildNav(currentPage) {
   const effectiveFaction = ctx ? ctx.slug : user.factionSlug;
   let links = [];
 
-  if (role === 'super_admin' && !ctx) {
+  const caps = Array.isArray(user.capabilities) ? user.capabilities : [];
+  const globalAdmin = role === 'super_admin' || caps.includes('*') || caps.includes('server:panel');
+
+  if (globalAdmin && !ctx) {
     links = [
-      { name: 'Painel Admin', url: '/admin.html' },
-      { name: 'Stalkers', url: '/stalkers.html' },
-      { name: 'Missões', url: '/missoes.html' },
-      { name: 'Itens', url: '/itens.html' },
-      { name: 'Estoque', url: '/estoque.html' },
-      { name: 'Relatórios', url: '/relatorios.html' },
-      { name: 'Lista Negra', url: '/listanegra.html' },
-      { name: 'Enciclopédia', url: '/enciclopedia.html' },
-      { name: 'Contratos', url: '/contratos.html' },
-      { name: 'Caixa', url: '/banco.html' }
+      { name: 'Central', url: '/admin.html' },
+      { name: 'Servidor DayZ', url: '/admin-oblivion.html' },
+      { name: 'Comércio & Traders', url: '/admin-commerce.html' },
+      { name: 'Quests', url: '/admin-quests.html' },
+      { name: 'Economia', url: '/admin-economy.html' },
+      { name: 'Operações', url: '/admin-operations.html' },
+      { name: 'Staff', url: '/admin-staff.html' },
+      { name: 'Auditoria', url: '/admin-audit.html' },
+      { name: 'Sistema', url: '/admin-system.html' }
     ];
   } else {
     links = getFactionLinks(effectiveFaction, role);

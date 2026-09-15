@@ -2,120 +2,91 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="style.css">
-<title>Central Administrativa</title>
-<style>
-.admin-shell{max-width:1320px;margin:26px auto 60px}.command-hero{background:linear-gradient(125deg,#03070b,#071421);border:1px solid #17314d;border-top:3px solid #3498db;padding:24px;position:relative;overflow:hidden}.command-hero:after{content:'SYSTEM CONTROL';position:absolute;right:20px;top:18px;color:#12283c;letter-spacing:4px;font-size:.8em}.command-hero h1{margin:0;color:#60a5fa;letter-spacing:2px}.command-hero p{color:#64748b;margin-bottom:0}.overview-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.overview-card{background:#03070b;border:1px solid #17314d;padding:17px;text-align:center;min-height:105px}.overview-card .value{font-size:2.05em;color:#60a5fa;margin-top:7px}.overview-card .label{color:#64748b;font-size:.82em;letter-spacing:1px}.section-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:25px 0 12px}.section-head h2{color:#60a5fa;margin:0}.faction-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}.faction-command{background:linear-gradient(145deg,#04090f,#020508);border:1px solid #17314d;padding:18px;position:relative}.faction-command:before{content:'';position:absolute;left:0;top:0;width:4px;height:100%;background:var(--faction-color)}.faction-top{display:flex;justify-content:space-between;gap:15px;align-items:flex-start}.faction-name{font-size:1.25em;color:var(--faction-color);letter-spacing:1px}.state{font-size:.75em;border:1px solid;padding:4px 9px}.state.on{color:#4ade80;border-color:#166534}.state.off{color:#f87171;border-color:#7f1d1d}.faction-mainstats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.mini-stat{background:rgba(10,20,30,.65);border:1px solid #102538;padding:9px}.mini-stat b{display:block;color:#e2e8f0;font-size:1.15em}.mini-stat small{color:#64748b}.module-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.module-metric{border-top:1px solid #17314d;padding-top:7px;color:#8aa0b5;font-size:.85em}.module-metric b{color:#cbd5e1}.command-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.command-btn{padding:8px 12px;border:1px solid #294b70;background:#07111c;color:#93c5fd;cursor:pointer;font-family:inherit}.command-btn:hover{background:#0d2032}.split-grid{display:grid;grid-template-columns:1fr 1.35fr;gap:15px}.alert-box,.activity-box{background:#03070b;border:1px solid #17314d;padding:16px}.alert-item{border-left:3px solid #ca8a04;padding:9px 10px;margin:7px 0;background:rgba(202,138,4,.06)}.alert-item.danger{border-color:#dc2626;background:rgba(220,38,38,.06)}.recent-row{display:grid;grid-template-columns:72px 1fr auto;gap:10px;padding:9px 0;border-bottom:1px solid #0f1e2c}.recent-time{color:#64748b;font-size:.8em}.recent-faction{color:#60a5fa;font-size:.8em}.admin-tools{margin-top:24px}.tool-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.tool-tabs button{width:auto;padding:9px 15px}.admin-panel-section{display:none}.admin-panel-section.active{display:block}@media(max-width:980px){.overview-grid{grid-template-columns:repeat(2,1fr)}.faction-grid,.split-grid{grid-template-columns:1fr}}@media(max-width:600px){.faction-mainstats,.module-metrics{grid-template-columns:repeat(2,1fr)}}
-</style>
+<link rel="stylesheet" href="style.css?v=27.1"><link rel="stylesheet" href="admin-control.css?v=27.1">
+<title>Central Administrativa V27.1 • Oblivion</title>
 </head>
-<body onload="checkAuth(); loadAdminPanel();"><nav id="mainNav"></nav>
-<div class="container admin-shell">
-<div class="command-hero"><div style="color:#3498db;font-size:.8em;letter-spacing:3px">GLOBAL COMMAND / ADMINISTRATOR ACCESS</div><h1>⚙ CENTRAL DE COMANDO ADMINISTRATIVO</h1><p>Visão operacional consolidada das facções, finanças, atividade e alertas do sistema.</p></div>
-<div id="globalOverview" class="overview-grid"></div>
-<div class="section-head"><h2>◈ SITUAÇÃO DAS FACÇÕES</h2><span class="text-muted">Dados atualizados do sistema</span></div>
-<div id="factionCommandGrid" class="faction-grid"></div>
-<div class="split-grid" style="margin-top:18px"><div class="alert-box"><h3 class="text-accent" style="margin-top:0">⚠ ALERTAS ADMINISTRATIVOS</h3><div id="globalAlerts"></div></div><div class="activity-box"><h3 class="text-accent" style="margin-top:0">◷ ATIVIDADE RECENTE GLOBAL</h3><div id="recentActivity"></div></div></div>
+<body class="admin-control-body" onload="loadAdminPanel()"><nav id="mainNav"></nav>
+<div class="admin-control-shell">
+  <aside id="adminRail" class="admin-rail"></aside>
+  <main class="admin-main">
+    <section class="admin-hero">
+      <div class="admin-hero-grid">
+        <div><div class="admin-eyebrow">Zona / Controle Global / Super Administrador <span class="admin-version-pill">UI V27.1</span></div><h1>CENTRAL ADMINISTRATIVA</h1><p>Comando consolidado das facções, economia, traders reais, quests, staff e integração do Oblivion Control com o servidor DayZ.</p></div>
+        <div class="admin-hero-actions"><a class="admin-btn primary" href="/admin-oblivion.html">◈ SERVIDOR DAYZ</a><a class="admin-btn" href="/admin-commerce.html">⇄ COMÉRCIO</a><button class="admin-btn" onclick="loadAdminPanel()">↻ ATUALIZAR</button></div>
+      </div>
+    </section>
 
-<div class="admin-tools">
-<div class="section-head"><h2>⚙ ADMINISTRAÇÃO DO SISTEMA</h2><span class="text-muted">Controles de gerenciamento</span></div>
-<div class="tool-tabs"><button class="btn-secondary" onclick="showAdminSection('factions')">FACÇÕES</button><button class="btn-secondary" onclick="showAdminSection('users')">USUÁRIOS</button><button class="btn-secondary" onclick="showAdminSection('audit')">AUDITORIA</button><button class="btn-danger" onclick="showAdminSection('reset')">RESET DE DADOS</button></div>
+    <section id="integrationStrip" class="admin-status-strip">
+      <div class="admin-status-cell"><small>Bridge</small><b id="bridgeState">CARREGANDO</b></div>
+      <div class="admin-status-cell"><small>Qonzer</small><b id="qonzerState">CARREGANDO</b></div>
+      <div class="admin-status-cell"><small>Workshop</small><b id="workshopState">CARREGANDO</b></div>
+      <div class="admin-status-cell"><small>Release</small><b id="releaseState">CARREGANDO</b></div>
+    </section>
 
-<div id="section-factions" class="admin-panel-section active card"><h3 class="text-accent">🏴 GERENCIAR FACÇÕES</h3><div id="factionList">Carregando...</div></div>
-<div id="section-users" class="admin-panel-section card"><h3 class="text-accent">👤 GERENCIAR USUÁRIOS</h3><button onclick="showCreateUserForm()" class="btn-success w-auto">+ NOVO USUÁRIO</button><div id="createUserForm" class="hidden card" style="border:1px solid var(--accent);margin-top:12px"><h4 class="text-accent">CRIAR NOVO USUÁRIO</h4><div class="d-flex gap-1"><input id="newUserName" placeholder="Nome" style="flex:1"><input id="newUserUsername" placeholder="Usuário (login)" style="flex:1"></div><div class="d-flex gap-1"><input type="password" id="newUserPassword" placeholder="Senha (mín. 6 caracteres)" style="flex:1"><select id="newUserRole" style="flex:1"><option value="operator">Operator</option><option value="viewer">Viewer</option><option value="commander">Commander</option><option value="faction_admin">Faction Admin</option><option value="super_admin">Super Admin</option></select></div><select id="newUserFaction"><option value="">-- Sem Facção (Super Admin) --</option></select><div class="d-flex gap-1"><button onclick="createNewUser()" class="btn-success">CRIAR</button><button onclick="createUserForm.classList.add('hidden')" class="btn-secondary">CANCELAR</button></div></div><div id="userList" style="margin-top:12px">Carregando...</div></div>
-<div id="section-audit" class="admin-panel-section card"><h3 class="text-accent">📋 LOG DE AUDITORIA</h3><div id="auditLog">Carregando...</div></div>
-<div id="section-reset" class="admin-panel-section card">
-<h3 style="color:#ff5c5c">⚠ RESET DE DADOS DAS FACÇÕES</h3>
-<p class="text-muted">Área exclusiva do Super Admin. Um backup automático do banco é criado antes de cada reset.</p>
-<div style="border:1px solid #6d2d2d;background:rgba(120,20,20,.08);padding:12px;margin:12px 0">
-<b style="color:#ff7676">RESETAR DADOS:</b> apaga todos os registros, banco/caixa, contratos, comércio, itens, missões, relatórios, pesquisas, RP, stalkers/membros e logs da facção. Preserva os usuários.<br>
-<b style="color:#ff3d3d">RESET TOTAL:</b> faz tudo acima e também apaga todos os usuários vinculados à facção. Super Admin global é preservado.
+    <div id="globalOverview" class="admin-kpis"></div>
+
+    <div class="admin-section-head"><div><h2>ATALHOS DE COMANDO</h2><p>Acesso às áreas que controlam o servidor e o sistema administrativo.</p></div></div>
+    <section class="admin-quick-grid">
+      <a class="admin-quick" href="/admin-oblivion.html"><span class="icon">◈</span><strong>Servidor & Oblivion Control</strong><span>Bridge, Qonzer, Workshop, traders reais, releases e estado de publicação.</span></a>
+      <a class="admin-quick" href="/admin-commerce.html"><span class="icon">⇄</span><strong>Comércio & Traders</strong><span>Catálogo global, regras por NPC, preço, estoque, reputação e source of truth.</span></a>
+      <a class="admin-quick" href="/admin-quests.html"><span class="icon">◆</span><strong>Quests</strong><span>Criação, requisitos, recompensas, progresso e vínculo com facções/NPCs.</span></a>
+      <a class="admin-quick" href="/admin-economy.html"><span class="icon">₽</span><strong>Economia</strong><span>Caixas das facções, banco geral, dinheiro pessoal, reputação e comércio.</span></a>
+      <a class="admin-quick" href="/admin-staff.html"><span class="icon">♟</span><strong>Staff & Permissões</strong><span>Usuários administrativos, cargos, capabilities e acesso ao controle DayZ.</span></a>
+      <a class="admin-quick" href="/admin-audit.html"><span class="icon">≡</span><strong>Auditoria</strong><span>Rastreabilidade de alterações, exclusões, releases e ações administrativas.</span></a>
+    </section>
+
+    <div class="admin-section-head"><div><h2>SITUAÇÃO DAS FACÇÕES</h2><p>Leitura consolidada de efetivo, finanças, missões e atividade.</p></div><span class="admin-badge">CONTEXTO GLOBAL</span></div>
+    <section id="factionCommandGrid" class="admin-grid"></section>
+
+    <section class="admin-grid" style="margin-top:12px">
+      <div class="admin-card"><div class="admin-card-top"><div><h3>ALERTAS ADMINISTRATIVOS</h3><div class="admin-card-sub">Pendências que exigem atenção</div></div><span class="admin-badge warn">MONITOR</span></div><div id="globalAlerts" style="margin-top:10px"></div></div>
+      <div class="admin-card"><div class="admin-card-top"><div><h3>ATIVIDADE RECENTE</h3><div class="admin-card-sub">Eventos globais do painel</div></div><span class="admin-badge muted">AUDIT</span></div><div id="recentActivity" style="margin-top:10px"></div></div>
+    </section>
+
+    <div id="factions" class="admin-section-head"><div><h2>ADMINISTRAÇÃO INTERNA</h2><p>Facções, usuários e recuperação. Alterações sensíveis continuam auditadas.</p></div></div>
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-pane="factions" onclick="showAdminPane('factions',this)">FACÇÕES</button>
+      <button class="admin-tab" data-pane="users" onclick="showAdminPane('users',this)">USUÁRIOS</button>
+      <button class="admin-tab" data-pane="reset" onclick="showAdminPane('reset',this)">RESET / RECUPERAÇÃO</button>
+    </div>
+
+    <section id="pane-factions" class="admin-pane active admin-card"><div class="admin-card-top"><div><h3>FACÇÕES DO SERVIDOR</h3><div class="admin-card-sub">Ativação e acesso ao contexto específico</div></div></div><div id="factionList" style="margin-top:12px">Carregando...</div></section>
+
+    <section id="pane-users" class="admin-pane admin-card"><div class="admin-card-top"><div><h3>USUÁRIOS DO PAINEL</h3><div class="admin-card-sub">Contas, cargos e vínculo com facções</div></div><button class="admin-btn success" onclick="showCreateUserForm()">+ NOVO USUÁRIO</button></div>
+      <div id="createUserForm" class="hidden admin-card" style="margin-top:12px"><div class="admin-form-grid"><div><label>NOME</label><input id="newUserName"></div><div><label>LOGIN</label><input id="newUserUsername"></div><div><label>SENHA</label><input type="password" id="newUserPassword"></div><div><label>CARGO</label><select id="newUserRole"><option value="operator">Operator</option><option value="viewer">Viewer</option><option value="commander">Commander</option><option value="faction_admin">Faction Admin</option><option value="super_admin">Super Admin</option></select></div><div class="full"><label>FACÇÃO</label><select id="newUserFaction"><option value="">-- Sem facção --</option></select></div></div><div class="admin-actions"><button class="admin-btn success" onclick="createNewUser()">CRIAR</button><button class="admin-btn" onclick="createUserForm.classList.add('hidden')">CANCELAR</button></div></div>
+      <div id="userList" style="margin-top:12px">Carregando...</div>
+    </section>
+
+    <section id="pane-reset" class="admin-pane admin-danger-zone"><div class="admin-card-top"><div><h3 style="color:#ff9999;margin:0">RESET / RECUPERAÇÃO</h3><div class="admin-card-sub">Somente Super Admin. Backup automático antes de operações destrutivas.</div></div><span class="admin-badge danger">ÁREA CRÍTICA</span></div>
+      <div class="admin-warning" style="margin-top:12px">Reset de dados do painel não deve remover <b>storage_1</b>, players.db, PBOs, Workshop ou runtime do DayZ. Esta função atua somente nos dados administrativos permitidos pelo backend.</div>
+      <div class="admin-actions"><button class="admin-btn warn" onclick="resetAllFactions('operational')">ZERAR DADOS OPERACIONAIS</button><button class="admin-btn danger" onclick="resetAllFactions('full')">RESET TOTAL DAS FACÇÕES</button></div>
+      <div id="resetFactionList" style="margin-top:12px"></div>
+      <div class="admin-section-head"><div><h3>HISTÓRICO DE RESET</h3></div></div><div id="resetHistory"></div>
+    </section>
+  </main>
 </div>
-<div id="resetFactionList">Carregando...</div>
-<hr style="border-color:#4b2222;margin:22px 0">
-<h4 style="color:#ff7676">RESET GLOBAL</h4>
-<div class="d-flex gap-1 flex-wrap">
-<button class="btn-warning w-auto" onclick="resetAllFactions('operational')">ZERAR TODAS AS FACÇÕES</button>
-<button class="btn-danger w-auto" onclick="resetAllFactions('full')">RESET TOTAL DO SERVIDOR</button>
-</div>
-<h4 style="color:#ff9b9b;margin-top:20px">HISTÓRICO DE RESETS</h4><div id="resetHistory" class="text-muted">Carregando...</div>
-</div>
-</div></div>
-<script src="app.js"></script>
+<script src="app.js?v=27.1"></script><script src="admin-control.js?v=27.1"></script>
 <script>
 let adminDashboard=null;
-function money(v){return Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' RU'}
+function money(v){return adminMoney(v)}
+function showAdminPane(name,btn){document.querySelectorAll('.admin-pane').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.admin-tab').forEach(x=>x.classList.remove('active'));document.getElementById('pane-'+name)?.classList.add('active');btn?.classList.add('active');if(name==='reset')history.replaceState(null,'','#reset');else if(name==='factions')history.replaceState(null,'','#factions');else history.replaceState(null,'','#users')}
 function switchToFaction(id){localStorage.setItem('super_admin_context',String(id));window.location.href='/dashboard.html'}
-function showAdminSection(name){document.querySelectorAll('.admin-panel-section').forEach(x=>x.classList.remove('active'));document.getElementById('section-'+name).classList.add('active')}
-async function loadAdminPanel(){const u=getUser();if(!u||u.role!=='super_admin'){location.href='/dashboard.html';return}localStorage.removeItem('super_admin_context');injectNav('/admin.html');await Promise.all([loadGlobalDashboard(),loadFactionList(),loadUserList(),loadAuditEntries(),loadResetFactionList(),loadResetHistory()])}
-async function loadGlobalDashboard(){try{const d=await api('/api/admin/global-dashboard');adminDashboard=d;const o=d.overview;globalOverview.innerHTML=[['FACÇÕES ATIVAS',o.activeFactions],['USUÁRIOS ATIVOS',`${o.activeUsers}/${o.totalUsers}`],['SALDO GLOBAL',money(o.totalBalance)],['MISSÕES ABERTAS',o.openMissions],['CONTRATOS NOVOS',o.pendingContracts],['CONTRATOS ACEITOS',o.activeContracts],['AUDITORIA 24H',o.audits24h],['USUÁRIOS INATIVOS',o.inactiveUsers]].map(([l,v])=>`<div class="overview-card"><div class="label">${l}</div><div class="value">${v}</div></div>`).join('');renderFactionCards(d.factions);renderAlerts(d.alerts);renderRecent(d.recentActivity)}catch(e){console.error(e)}}
-function renderFactionCards(rows){factionCommandGrid.innerHTML=rows.map(f=>`<div class="faction-command" style="--faction-color:${f.color}"><div class="faction-top"><div><div class="faction-name">${escapeHtml(f.name.toUpperCase())}</div><div class="text-muted">${f.activeUsers} usuários ativos de ${f.users}</div></div><span class="state ${f.active?'on':'off'}">${f.active?'ONLINE':'OFFLINE'}</span></div><div class="faction-mainstats"><div class="mini-stat"><b>${money(f.balance)}</b><small>Saldo</small></div><div class="mini-stat"><b>${f.missions}</b><small>Missões abertas</small></div><div class="mini-stat"><b>${f.activity7d}</b><small>Eventos / 7 dias</small></div></div><div class="module-metrics">${(f.metrics||[]).slice(0,6).map(m=>`<div class="module-metric"><b>${m.value}</b> ${escapeHtml(m.label)}</div>`).join('')}</div><div class="text-muted" style="font-size:.8em;margin-top:8px">Última atividade: ${f.lastActivity?`${escapeHtml(f.lastActivity.user_name||f.lastActivity.username||'Sistema')} • ${formatDateTime(f.lastActivity.created_at)}`:'Nenhuma registrada'}</div><div class="command-actions"><button class="command-btn" onclick="switchToFaction(${f.id})">ABRIR PAINEL</button><button class="command-btn" onclick="localStorage.setItem('super_admin_context','${f.id}');location.href='/team.html'">EQUIPE</button><button class="command-btn" onclick="localStorage.setItem('super_admin_context','${f.id}');location.href='/banco.html'">CAIXA</button></div></div>`).join('')}
-function renderAlerts(rows){globalAlerts.innerHTML=rows&&rows.length?rows.map(a=>`<div class="alert-item ${a.severity==='danger'?'danger':''}"><b>${escapeHtml(a.faction)}</b><br><span>${escapeHtml(a.message)}</span><br><button class="command-btn" style="margin-top:6px" onclick="switchToFaction(${a.factionId})">ABRIR FACÇÃO</button></div>`).join(''):'<p class="text-muted">Nenhum alerta operacional no momento.</p>'}
-function renderRecent(rows){recentActivity.innerHTML=rows&&rows.length?rows.map(r=>`<div class="recent-row"><span class="recent-time">${new Date(r.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span><div><b>${escapeHtml(r.user_name||r.username||'Sistema')}</b> ${escapeHtml(r.action)}${r.entity?` em ${escapeHtml(r.entity)}`:''}</div><span class="recent-faction">${escapeHtml(r.faction_name||'Global')}</span></div>`).join(''):'<p class="text-muted">Nenhuma atividade recente.</p>'}
-async function loadFactionList(){try{const fs=await api('/api/factions');factionList.innerHTML=fs.map(f=>{let t={};try{t=JSON.parse(f.theme_config||'{}')}catch{}const c=t.accentColor||'#888';return`<div class="card" style="border-left:4px solid ${c};display:flex;justify-content:space-between;align-items:center;gap:10px"><div><strong style="color:${c}">${escapeHtml(f.name)}</strong> <span class="text-muted">(${escapeHtml(f.code)})</span><br><small class="text-muted">Slug: ${escapeHtml(f.slug)} | Form público: ${f.public_form_enabled?'Sim':'Não'}</small></div><div class="d-flex gap-1"><span class="badge ${f.active?'badge-active':'badge-rejected'}">${f.active?'ATIVA':'DESATIVADA'}</span><button onclick="toggleFactionActive(${f.id})" class="${f.active?'btn-warning':'btn-success'} w-auto">${f.active?'DESATIVAR':'ATIVAR'}</button></div></div>`}).join('');newUserFaction.innerHTML='<option value="">-- Sem Facção (Super Admin) --</option>'+fs.map(f=>`<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('')}catch(e){console.error(e)}}
+async function loadAdminPanel(){const u=getUser();if(!u||u.role!=='super_admin'){location.href='/dashboard.html';return}localStorage.removeItem('super_admin_context');injectNav('/admin.html');mountAdminRail(location.hash==='#reset'?'reset':'overview');if(location.hash==='#reset')showAdminPane('reset',document.querySelector('[data-pane="reset"]'));await Promise.all([loadIntegrationState(),loadGlobalDashboard(),loadFactionList(),loadUserList(),loadResetFactionList(),loadResetHistory()])}
+async function loadIntegrationState(){try{const d=await api('/api/admin/oblivion/overview');bridgeState.innerHTML=adminStateBadge(d.integration.bridgeStatus);qonzerState.innerHTML=adminStateBadge(d.integration.qonzerStatus);workshopState.innerHTML=adminStateBadge(d.integration.workshopStatus);releaseState.textContent=d.latestRelease?`${d.latestRelease.release_code} • ${d.latestRelease.status}`:d.integration.releaseCandidate}catch(e){bridgeState.textContent='INDISPONÍVEL';qonzerState.textContent='—';workshopState.textContent='—';releaseState.textContent='—'}}
+async function loadGlobalDashboard(){try{const d=await api('/api/admin/global-dashboard');adminDashboard=d;const o=d.overview;globalOverview.innerHTML=[['FACÇÕES ATIVAS',o.activeFactions,'estrutura administrativa'],['USUÁRIOS ATIVOS',`${o.activeUsers}/${o.totalUsers}`,'contas do painel'],['SALDO GLOBAL',money(o.totalBalance),'caixas das facções'],['MISSÕES ABERTAS',o.openMissions,'operações em curso'],['CONTRATOS NOVOS',o.pendingContracts,'mercenários'],['AUDITORIA 24H',o.audits24h,'eventos registrados'],['USUÁRIOS INATIVOS',o.inactiveUsers,'acesso suspenso'],['CONTRATOS ACEITOS',o.activeContracts,'em processamento']].map(([l,v,n])=>`<div class="admin-kpi"><small>${l}</small><b>${v}</b><div class="admin-kpi-note">${n}</div></div>`).join('');renderFactionCards(d.factions);renderAlerts(d.alerts);renderRecent(d.recentActivity)}catch(e){console.error(e)}}
+function renderFactionCards(rows){factionCommandGrid.innerHTML=rows.map(f=>`<article class="admin-card admin-card-accent" style="--card-accent:${f.color}"><div class="admin-card-top"><div><div class="admin-card-title" style="color:${f.color}">${escapeHtml(f.name.toUpperCase())}</div><div class="admin-card-sub">${f.activeUsers} usuários ativos de ${f.users}</div></div>${adminStateBadge(f.active?'ATIVA':'DESATIVADA')}</div><div class="admin-metric-row"><div class="admin-metric"><b>${money(f.balance)}</b><small>Saldo</small></div><div class="admin-metric"><b>${f.missions}</b><small>Missões</small></div><div class="admin-metric"><b>${f.activity7d}</b><small>Eventos / 7d</small></div></div><div class="admin-grid three">${(f.metrics||[]).slice(0,6).map(m=>`<div class="admin-metric"><b>${m.value}</b><small>${escapeHtml(m.label)}</small></div>`).join('')}</div><div class="admin-card-sub" style="margin-top:10px">Última atividade: ${f.lastActivity?`${escapeHtml(f.lastActivity.user_name||f.lastActivity.username||'Sistema')} • ${formatDateTime(f.lastActivity.created_at)}`:'Nenhuma registrada'}</div><div class="admin-actions"><button class="admin-btn primary" onclick="switchToFaction(${f.id})">ABRIR FACÇÃO</button><button class="admin-btn" onclick="localStorage.setItem('super_admin_context','${f.id}');location.href='/team.html'">EQUIPE</button><button class="admin-btn" onclick="localStorage.setItem('super_admin_context','${f.id}');location.href='/banco.html'">FINANÇAS</button></div></article>`).join('')}
+function renderAlerts(rows){globalAlerts.innerHTML=rows&&rows.length?rows.map(a=>`<div class="admin-warning" style="margin:7px 0"><b>${escapeHtml(a.faction)}</b><br>${escapeHtml(a.message)}<div class="admin-actions"><button class="admin-btn" onclick="switchToFaction(${a.factionId})">ABRIR FACÇÃO</button></div></div>`).join(''):'<div class="admin-empty">Nenhum alerta operacional.</div>'}
+function renderRecent(rows){recentActivity.innerHTML=rows&&rows.length?rows.map(r=>`<div class="admin-feed-row"><span class="admin-feed-time">${new Date(r.created_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</span><div><b>${escapeHtml(r.user_name||r.username||'Sistema')}</b> ${escapeHtml(r.action)}${r.entity?` em ${escapeHtml(r.entity)}`:''}</div><span class="admin-feed-scope">${escapeHtml(r.faction_name||'Global')}</span></div>`).join(''):'<div class="admin-empty">Nenhuma atividade recente.</div>'}
+async function loadFactionList(){try{const fs=await api('/api/factions');factionList.innerHTML=fs.map(f=>{let t={};try{t=JSON.parse(f.theme_config||'{}')}catch{}const c=t.accentColor||t.primaryColor||'#5eb7ff';return`<div class="admin-card admin-card-accent" style="--card-accent:${c};margin:8px 0"><div class="admin-card-top"><div><strong style="color:${c}">${escapeHtml(f.name)}</strong> <span class="admin-card-sub">${escapeHtml(f.code)} / ${escapeHtml(f.slug)}</span><div class="admin-card-sub">Form público: ${f.public_form_enabled?'habilitado':'desabilitado'}</div></div>${adminStateBadge(f.active?'ATIVA':'DESATIVADA')}</div><div class="admin-actions"><button class="admin-btn" onclick="switchToFaction(${f.id})">ABRIR CONTEXTO</button><button onclick="toggleFactionActive(${f.id})" class="admin-btn ${f.active?'warn':'success'}">${f.active?'DESATIVAR':'ATIVAR'}</button></div></div>`}).join('');newUserFaction.innerHTML='<option value="">-- Sem Facção (Super Admin) --</option>'+fs.map(f=>`<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('')}catch(e){console.error(e)}}
 async function toggleFactionActive(id){if(!confirm('Confirmar alteração do status desta facção?'))return;await api(`/api/factions/${id}/toggle`,{method:'PUT'});showSuccess('Status alterado.');await Promise.all([loadFactionList(),loadGlobalDashboard()])}
 function showCreateUserForm(){createUserForm.classList.remove('hidden')}
 async function createNewUser(){try{const body={name:newUserName.value.trim(),username:newUserUsername.value.trim(),password:newUserPassword.value,role:newUserRole.value,factionId:newUserFaction.value?parseInt(newUserFaction.value):null};await api('/api/users',{method:'POST',body});showSuccess('Usuário criado.');createUserForm.classList.add('hidden');await Promise.all([loadUserList(),loadGlobalDashboard()])}catch(e){showError(e.message||'Erro ao criar usuário.')}}
-async function loadUserList(){try{const users=await api('/api/users');userList.innerHTML=users.map(u=>`<div class="card" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><div><strong>${escapeHtml(u.name)}</strong> <span class="text-muted">(@${escapeHtml(u.username)})</span><br><small class="text-accent">${escapeHtml(String(u.role).toUpperCase())}</small>${u.faction_name?` <small class="text-muted">| ${escapeHtml(u.faction_name)}</small>`:' <small class="text-muted">| Super Admin Global</small>'}</div><div class="d-flex gap-1"><span class="badge ${u.active?'badge-active':'badge-rejected'}">${u.active?'ATIVO':'INATIVO'}</span>${u.id!==getUser().id?`<button onclick="toggleUserActive(${u.id},${u.active})" class="${u.active?'btn-warning':'btn-success'} w-auto">${u.active?'DESATIVAR':'ATIVAR'}</button><button onclick="deleteUser(${u.id})" class="btn-danger w-auto">EXCLUIR</button>`:''}</div></div>`).join('')}catch(e){console.error(e)}}
+async function loadUserList(){try{const users=await api('/api/users');userList.innerHTML=users.map(u=>`<div class="admin-card" style="margin:7px 0"><div class="admin-card-top"><div><strong>${escapeHtml(u.name)}</strong> <span class="admin-card-sub">@${escapeHtml(u.username)}</span><div class="admin-card-sub">${escapeHtml(String(u.role).toUpperCase())} • ${escapeHtml(u.faction_name||'GLOBAL')}</div></div>${adminStateBadge(u.active?'ATIVO':'INATIVO')}</div><div class="admin-actions">${u.id!==getUser().id?`<button onclick="toggleUserActive(${u.id},${u.active})" class="admin-btn ${u.active?'warn':'success'}">${u.active?'DESATIVAR':'ATIVAR'}</button><button onclick="deleteUser(${u.id})" class="admin-btn danger">EXCLUIR</button>`:'<span class="admin-badge">SESSÃO ATUAL</span>'}</div></div>`).join('')}catch(e){console.error(e)}}
 async function toggleUserActive(id,a){await api(`/api/users/${id}`,{method:'PUT',body:{active:a?0:1}});showSuccess('Status alterado.');await Promise.all([loadUserList(),loadGlobalDashboard()])}
 async function deleteUser(id){if(!confirm('Apagar este usuário permanentemente?'))return;await api(`/api/users/${id}`,{method:'DELETE'});showSuccess('Usuário excluído.');await Promise.all([loadUserList(),loadGlobalDashboard()])}
-
-
-async function loadResetHistory(){
- try{
-  const rows=await api('/api/admin/reset-history');
-  resetHistory.innerHTML=rows&&rows.length?rows.map(r=>`<div style="border-bottom:1px solid #4b2222;padding:7px 0"><b>${r.scope==='all'?'TODAS AS FACÇÕES':escapeHtml(r.faction_name||'Facção')}</b> • ${r.reset_mode==='full'?'RESET TOTAL':'DADOS OPERACIONAIS'}<br><small>${formatDateTime(r.created_at)} • ${escapeHtml(r.user_name||r.username||'Super Admin')} • Backup: ${escapeHtml(r.backup_file||'-')}</small></div>`).join(''):'Nenhum reset administrativo registrado.';
- }catch(e){console.error(e)}
-}
-
-async function loadResetFactionList(){
- try{
-  const fs=await api('/api/factions');
-  resetFactionList.innerHTML=fs.map(f=>`<div class="card" style="border-left:4px solid #7f1d1d;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-    <div><strong>${escapeHtml(f.name)}</strong> <span class="text-muted">(${escapeHtml(f.code)})</span><br><small class="text-muted">Reset individual da facção</small></div>
-    <div class="d-flex gap-1 flex-wrap">
-      <button class="btn-warning w-auto" onclick="previewFactionReset(${f.id},'${String(f.name).replace(/'/g,"\\'")}','operational')">RESETAR DADOS</button>
-      <button class="btn-danger w-auto" onclick="previewFactionReset(${f.id},'${String(f.name).replace(/'/g,"\\'")}','full')">RESET TOTAL</button>
-    </div>
-  </div>`).join('');
- }catch(e){console.error(e)}
-}
-
-function formatResetCounts(counts,mode){
- const labels={
-  faction_bank_transactions:'Caixa',faction_general_bank_transactions:'Banco Geral',faction_records:'Registros RP',rp_experiments:'Experimentos',commerce_transactions:'Comércio',stalkers:'Stalkers/Membros',itens:'Itens',missoes:'Missões',relatorios:'Relatórios',pesquisas:'Pesquisas',historico:'Histórico',audit_log:'Logs',mercenary_contracts:'Contratos',contract_notes:'Notas de contratos',users:'Usuários'
- };
- return Object.entries(counts||{}).filter(([k,v])=>Number(v)>0&&(mode==='full'||k!=='users')).map(([k,v])=>`${labels[k]||k}: ${v}`).join('\n')||'Nenhum dado operacional encontrado.';
-}
-
-async function previewFactionReset(id,name,mode){
- try{
-  const summary=await api(`/api/admin/factions/${id}/reset-summary`);
-  const details=formatResetCounts(summary.counts,mode);
-  const phrase=`RESETAR ${String(name).toUpperCase()}`;
-  const warning=mode==='full'?'\n\nATENÇÃO: este modo também apagará os usuários da facção.':'';
-  const typed=prompt(`Você está prestes a resetar ${name}.\n\nDados encontrados:\n${details}${warning}\n\nUm backup automático será criado.\n\nDigite exatamente:\n${phrase}`);
-  if(typed===null)return;
-  if(typed.trim().toUpperCase()!==phrase){showError('Confirmação incorreta. Reset cancelado.');return;}
-  await api(`/api/admin/factions/${id}/reset`,{method:'POST',body:{mode,confirmation:typed}});
-  showSuccess(`${name} foi resetada com sucesso.`);
-  await Promise.all([loadGlobalDashboard(),loadFactionList(),loadUserList(),loadAuditEntries(),loadResetFactionList(),loadResetHistory()]);
- }catch(e){showError(e.message||'Erro ao resetar facção.')}
-}
-
-async function resetAllFactions(mode){
- const phrase=mode==='full'?'RESETAR TUDO':'ZERAR TODAS';
- const description=mode==='full'
-  ?'Isso apagará TODOS os dados e também todos os usuários vinculados às facções. Apenas o Super Admin global será preservado.'
-  :'Isso apagará TODOS os dados operacionais de TODAS as facções, mas preservará os usuários.';
- const typed=prompt(`${description}\n\nUm backup automático será criado antes da operação.\n\nDigite exatamente:\n${phrase}`);
- if(typed===null)return;
- if(typed.trim().toUpperCase()!==phrase){showError('Confirmação incorreta. Reset cancelado.');return;}
- try{
-  await api('/api/admin/reset-all-factions',{method:'POST',body:{mode,confirmation:typed}});
-  showSuccess(mode==='full'?'Reset total do servidor concluído.':'Todas as facções foram zeradas.');
-  await Promise.all([loadGlobalDashboard(),loadFactionList(),loadUserList(),loadAuditEntries(),loadResetFactionList(),loadResetHistory()]);
- }catch(e){showError(e.message||'Erro ao resetar servidor.')}
-}
-
-async function loadAuditEntries(){try{const logs=await api('/api/audit?limit=50');auditLog.innerHTML=logs&&logs.length?logs.map(l=>`<div style="border-bottom:1px solid #102030;padding:8px 0"><div class="d-flex justify-between"><span><b class="text-accent">${escapeHtml(l.action)}</b> ${l.entity?`em ${escapeHtml(l.entity)} #${l.entity_id||''}`:''}</span><small class="text-muted">${formatDateTime(l.created_at)}</small></div><small class="text-muted">Usuário: ${l.actor_type==='system'?'Sistema':l.actor_type==='deleted_user'?`Usuário removido (ID ${l.user_id})`:`${escapeHtml(l.user_name||'Sem nome')} (@${escapeHtml(l.username||'sem-login')})`}${l.faction_name?` | Facção: ${escapeHtml(l.faction_name)}`:''}${l.user_role?` | Cargo: ${escapeHtml(String(l.user_role).toUpperCase())}`:''} | IP: ${escapeHtml(l.ip_address||'N/A')}</small></div>`).join(''):'<p class="text-muted">Nenhum evento registrado.</p>'}catch(e){console.error(e)}}
+async function loadResetHistory(){try{const rows=await api('/api/admin/reset-history');resetHistory.innerHTML=rows&&rows.length?rows.map(r=>`<div class="admin-feed-row"><span class="admin-feed-time">${new Date(r.created_at).toLocaleDateString('pt-BR')}</span><div><b>${r.scope==='all'?'TODAS AS FACÇÕES':escapeHtml(r.faction_name||'Facção')}</b> • ${r.reset_mode==='full'?'RESET TOTAL':'DADOS OPERACIONAIS'}<br><small>${escapeHtml(r.user_name||r.username||'Super Admin')} • Backup: ${escapeHtml(r.backup_file||'-')}</small></div><span class="admin-feed-scope">${formatDateTime(r.created_at)}</span></div>`).join(''):'<div class="admin-empty">Nenhum reset administrativo registrado.</div>'}catch(e){console.error(e)}}
+async function loadResetFactionList(){try{const fs=await api('/api/factions');resetFactionList.innerHTML=fs.map(f=>`<div class="admin-card" style="margin:7px 0"><div class="admin-card-top"><div><strong>${escapeHtml(f.name)}</strong><div class="admin-card-sub">Reset individual do painel desta facção</div></div><span class="admin-badge danger">SUPER ADMIN</span></div><div class="admin-actions"><button class="admin-btn warn" onclick="previewFactionReset(${f.id},'${String(f.name).replace(/'/g,"\\'")}','operational')">ZERAR OPERACIONAL</button><button class="admin-btn danger" onclick="previewFactionReset(${f.id},'${String(f.name).replace(/'/g,"\\'")}','full')">RESET TOTAL</button></div></div>`).join('')}catch(e){console.error(e)}}
+function formatResetCounts(counts,mode){const labels={faction_bank_transactions:'Caixa',faction_general_bank_transactions:'Banco Geral',faction_records:'Registros RP',rp_experiments:'Experimentos',commerce_transactions:'Comércio',stalkers:'Stalkers/Membros',itens:'Itens',missoes:'Missões',relatorios:'Relatórios',pesquisas:'Pesquisas',historico:'Histórico',audit_log:'Logs',mercenary_contracts:'Contratos',contract_notes:'Notas de contratos',users:'Usuários'};return Object.entries(counts||{}).filter(([k,v])=>Number(v)>0&&(mode==='full'||k!=='users')).map(([k,v])=>`${labels[k]||k}: ${v}`).join('\n')||'Nenhum dado operacional encontrado.'}
+async function previewFactionReset(id,name,mode){try{const summary=await api(`/api/admin/factions/${id}/reset-summary`);const details=formatResetCounts(summary.counts,mode);const phrase=`RESETAR ${String(name).toUpperCase()}`;const warning=mode==='full'?'\n\nATENÇÃO: este modo também apagará os usuários da facção.':'';const typed=prompt(`Você está prestes a resetar ${name}.\n\nDados encontrados:\n${details}${warning}\n\nUm backup automático será criado.\n\nDigite exatamente:\n${phrase}`);if(typed===null)return;if(typed.trim().toUpperCase()!==phrase){showError('Confirmação incorreta. Reset cancelado.');return}await api(`/api/admin/factions/${id}/reset`,{method:'POST',body:{mode,confirmation:typed}});showSuccess(`${name} foi resetada.`);await Promise.all([loadGlobalDashboard(),loadFactionList(),loadUserList(),loadResetFactionList(),loadResetHistory()])}catch(e){showError(e.message||'Erro ao resetar facção.')}}
+async function resetAllFactions(mode){const phrase=mode==='full'?'RESETAR TUDO':'ZERAR TODAS';const description=mode==='full'?'Isso apagará todos os dados administrativos e usuários vinculados às facções. O Super Admin global será preservado.':'Isso apagará os dados operacionais das facções e preservará os usuários.';const typed=prompt(`${description}\n\nBackup automático será criado.\n\nDigite exatamente:\n${phrase}`);if(typed===null)return;if(typed.trim().toUpperCase()!==phrase){showError('Confirmação incorreta.');return}try{await api('/api/admin/reset-all-factions',{method:'POST',body:{mode,confirmation:typed}});showSuccess('Reset concluído.');await Promise.all([loadGlobalDashboard(),loadFactionList(),loadUserList(),loadResetFactionList(),loadResetHistory()])}catch(e){showError(e.message||'Erro ao resetar.')}}
 </script></body></html>

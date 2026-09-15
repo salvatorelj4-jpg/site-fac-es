@@ -1,0 +1,25 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="admin-control.css"><title>CENTRAL DE STAFF</title>
+<style>
+.ctrl-wrap{max-width:1320px;margin:28px auto 70px;padding:42px 18px 20px}
+.ctrl-hero{border:1px solid #17314d;border-top:3px solid #3498db;background:linear-gradient(125deg,#03070b,#071421);padding:22px;margin-bottom:14px}
+.ctrl-hero h1{margin:4px 0;color:#60a5fa;letter-spacing:2px}.ctrl-hero p{color:#718096;margin:0}
+.ctrl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:12px}
+.ctrl-card{background:#03070b;border:1px solid #17314d;padding:15px}
+.ctrl-card h3{color:#60a5fa;margin-top:0}.ctrl-form{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.ctrl-form .full{grid-column:1/-1}.ctrl-form label{font-size:11px;color:#8aa0b5;display:block;margin-bottom:4px;letter-spacing:1px}
+.ctrl-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.ctrl-actions button{width:auto}
+.stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}.stat{border:1px solid #17314d;background:#03070b;padding:15px;text-align:center}.stat b{display:block;font-size:25px;color:#60a5fa}.stat small{color:#6f8498}
+.badge2{display:inline-block;padding:3px 7px;border:1px solid #31506d;color:#9cc8ec;font-size:10px;margin:2px}
+@media(max-width:760px){.ctrl-form{grid-template-columns:1fr}.stat-row{grid-template-columns:1fr 1fr}}
+</style>
+</head><body class="admin-control-body"><nav id="mainNav"></nav><div class="admin-control-shell"><aside id="adminRail" class="admin-rail"></aside><main class="admin-main"><div class="ctrl-wrap"><section class="ctrl-hero"><div style="font-size:11px;letter-spacing:3px;color:#3498db">GLOBAL COMMAND / ADMINISTRATOR</div><h1>CENTRAL DE STAFF</h1><p>Conceda e retire permissões individuais. O cargo continua existindo, mas as capacidades efetivas podem ser ampliadas pela administração.</p></section>
+<div class="ctrl-grid"><section class="ctrl-card"><h3>MEMBROS / USUÁRIOS</h3><div id="users"></div></section><section class="ctrl-card"><h3>PERMISSÕES INDIVIDUAIS</h3><div id="selected">Selecione um usuário.</div><div id="caps"></div><div id="staffActions" class="ctrl-actions hidden"><button class="btn-success" onclick="save()">SALVAR PERMISSÕES</button><button class="btn-secondary" onclick="clearAll()">REMOVER TODAS</button></div></section></div>
+</div></main></div><script src="app.js"></script><script src="admin-control.js"></script><script>
+let allUsers=[],catalog=[],selectedId=null;
+async function init(){checkAuth();mountAdminRail('staff');injectNav('/admin-staff.html');if(getUser().role!=='super_admin'){document.querySelector('.ctrl-wrap').innerHTML='<div class="ctrl-card">Apenas o Super Admin pode administrar permissões.</div>';return}[allUsers,catalog]=await Promise.all([api('/api/users'),api('/api/admin/staff/capabilities')]);renderUsers()}
+function renderUsers(){users.innerHTML=allUsers.map(u=>`<button class="command-btn" style="display:block;width:100%;margin:5px 0;text-align:left" onclick="pick(${u.id})"><b>${escapeHtml(u.name)}</b> @${escapeHtml(u.username)}<br><small>${escapeHtml(u.role)} • ${escapeHtml(u.faction_name||'Global')}</small></button>`).join('')}
+async function pick(id){selectedId=id;const d=await api(`/api/admin/staff/${id}/permissions`);selected.innerHTML=`<b>${escapeHtml(d.user.name)} (@${escapeHtml(d.user.username)})</b><br><span class="text-muted">Cargo base: ${escapeHtml(d.user.role)}</span>`;const eff=new Set(d.effective||[]);caps.innerHTML=catalog.map(c=>`<label class="ctrl-card" style="display:block;padding:9px;margin:5px 0"><input type="checkbox" class="cap" value="${c.key}" ${eff.has(c.key)?'checked':''}> <b>${escapeHtml(c.group)}</b> — ${escapeHtml(c.label)}</label>`).join('');staffActions.classList.remove('hidden')}
+async function save(){if(!selectedId)return;const capabilities=[...document.querySelectorAll('.cap:checked')].map(x=>x.value);await api(`/api/admin/staff/${selectedId}/permissions`,{method:'PUT',body:{capabilities}});showSuccess('Permissões atualizadas. O usuário deve entrar novamente para atualizar o menu.');await pick(selectedId)}
+async function clearAll(){document.querySelectorAll('.cap').forEach(x=>x.checked=false);await save()}
+init();
+</script></body></html>
