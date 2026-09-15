@@ -132,7 +132,7 @@ describe('FACTIONS', () => {
             role: 'faction_admin',
             factionId: 2
         }, adminToken);
-        assert.strictEqual(ecoRes.status, 200);
+        assert.strictEqual(ecoRes.status, 201);
 
         // Create duty user
         const dutyRes = await request('POST', '/api/users', {
@@ -142,7 +142,7 @@ describe('FACTIONS', () => {
             role: 'operator',
             factionId: 1
         }, adminToken);
-        assert.strictEqual(dutyRes.status, 200);
+        assert.strictEqual(dutyRes.status, 201);
 
         // Create mercenary user
         const mercRes = await request('POST', '/api/users', {
@@ -152,7 +152,7 @@ describe('FACTIONS', () => {
             role: 'operator',
             factionId: 5
         }, adminToken);
-        assert.strictEqual(mercRes.status, 200);
+        assert.strictEqual(mercRes.status, 201);
 
         // Login as each
         const ecoLogin = await request('POST', '/api/login', { username: 'test_eco_admin', password: 'TestPass123' });
