@@ -12,6 +12,7 @@ const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const { pathToFileURL } = require('url');
 
 // ==========================================
 // ENVIRONMENT VALIDATION
@@ -920,6 +921,15 @@ function createOblivionControl() {
 const obc = createOblivionControl();
 function requireObcCapability(capability) { return async (req,res,next) => { if(req.user.role==='super_admin')return next(); const caps=await getEffectiveCapabilities(req.user.id,req.user.role); if(!caps.includes(capability))return res.status(403).json({error:'Forbidden: Missing Oblivion capability'}); next(); }; }
 function obcBridgeAuth(req,res,next) { const supplied=req.headers['x-obc-bridge-token']; const expected=OBC_BRIDGE_TOKEN; if(!expected||typeof supplied!=='string'||Buffer.byteLength(supplied)!==Buffer.byteLength(expected)||!crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected)))return res.status(401).json({error:'BRIDGE_AUTH_REQUIRED'});next(); }
+let obcSftpDryRunModule;
+let obcSftpDryRunLoading;
+async function runObcAdminSftpDryRun() {
+    if (!obcSftpDryRunModule) {
+        obcSftpDryRunLoading ||= import(pathToFileURL(path.join(__dirname, 'bridge', 'admin-sftp-dry-run.mjs')).href);
+        obcSftpDryRunModule = await obcSftpDryRunLoading;
+    }
+    return obcSftpDryRunModule.runAdminSftpDryRun();
+}
 
 function requireFaction(...allowedCodes) {
     return (req, res, next) => {
@@ -4334,6 +4344,18 @@ app.get('/api/oblivion/bridge/releases/:releaseId/manifest', obcBridgeAuth, (req
 app.get('/api/oblivion/bridge/releases/:releaseId/files/:fileKey', obcBridgeAuth, (req,res,next)=>{try{const file=obc.file(req.params.releaseId,req.params.fileKey);res.set('Content-Type','application/json; charset=utf-8');res.set('X-OBC-SHA256',file.entry.sha256);res.send(file.bytes)}catch(e){next(e)}});
 app.get('/api/oblivion/bridge/rollback-requests', obcBridgeAuth, (req,res)=>res.json({requests:obc.pending()}));
 app.post('/api/oblivion/bridge/heartbeat', obcBridgeAuth, (req,res,next)=>{try{res.json(obc.heartbeat(req.body||{}))}catch(e){next(e)}});
+let obcAdminSftpDryRunRequest = false;
+app.post('/api/oblivion/admin/sftp-dry-run', auth, requireObcCapability('oblivion:manage'), async (req,res)=>{
+    if (obcAdminSftpDryRunRequest) return res.status(409).json({ ok:false, error:'SFTP_DRY_RUN_BUSY', status:'FAIL' });
+    obcAdminSftpDryRunRequest = true;
+    try {
+        const result = await runObcAdminSftpDryRun();
+        return res.json(result);
+    } catch (error) {
+        const code = ['DRY_RUN_REQUIRED','SFTP_DRY_RUN_BUSY','SFTP_DRY_RUN_TIMEOUT','SFTP_DRY_RUN_FAILED'].includes(error?.code) ? error.code : 'SFTP_DRY_RUN_FAILED';
+        return res.status(Number(error?.status) || 503).json({ ok:false, error:code, status:'FAIL' });
+    } finally { obcAdminSftpDryRunRequest = false; }
+});
 
 // --- GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
