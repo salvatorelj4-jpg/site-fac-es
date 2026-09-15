@@ -461,14 +461,20 @@ async function initDb() {
                 ['yanov','Yanov','OG_YanovTraderVisual','','Yanov','RUB','VALIDATED_LOCAL'],
                 ['bandit','Bandit Trader','OG_BanditTraderVisual','bandits','Base dos Bandidos','RUB','VALIDATED_LOCAL'],
                 ['duty','Duty Trader','OG_DutyTraderVisual','duty','Base Duty','RUB','VALIDATED_LOCAL'],
-                ['merc','Merc Trader','OG_MercTradeVisual','mercenaries','Base Mercenária','RUB','OWNER_RISK_ACCEPTED_NOT_LIVE_TESTED'],
-                ['merc_barter','Merc Barter / Bazar','OG_MercBarterNPC','mercenaries','Bazar','NAILS','READY_STATIC_IDENTITY_AMBIGUOUS']
+                ['merc','Trader Mercenário (Rublos)','OG_MercTradeVisual','mercenaries','Base Mercenária','RUB','OWNER_RISK_ACCEPTED_NOT_LIVE_TESTED'],
+                ['merc_barter','Bazar Mercenário (Pregos)','OG_MercBarterNPC','mercenaries','3 bazares • identidade individual pendente','NAILS','READY_STATIC_IDENTITY_AMBIGUOUS']
             ];
             for (const t of oblivionTraderSeeds) {
                 await dbRun(`INSERT OR IGNORE INTO oblivion_traders
                     (trader_id,name,entity_classname,faction_code,location_label,currency,validation_status)
                     VALUES (?,?,?,?,?,?,?)`, t);
             }
+
+            // V27.3: normalize Merc labels even on existing databases created by older UI versions.
+            await dbRun(`UPDATE oblivion_traders SET name = ?, location_label = ? WHERE trader_id = 'merc'`,
+                ['Trader Mercenário (Rublos)', 'Base Mercenária']);
+            await dbRun(`UPDATE oblivion_traders SET name = ?, location_label = ? WHERE trader_id = 'merc_barter'`,
+                ['Bazar Mercenário (Pregos)', '3 bazares • identidade individual pendente']);
 
             // Seed the read-only V1.6 reference catalog only when this control-plane is new.
             // Rows imported from THIRD_PARTY_STATIC are panel references; editing one promotes it
@@ -751,7 +757,7 @@ app.use(cors({
     }
 }));
 
-// V27.1: admin UI assets must not be served stale during rollout.
+// V27.3: admin UI assets must not be served stale during rollout.
 app.use((req, res, next) => {
     if (/^\/admin(?:-[a-z-]+)?\.(?:html|css|js)$/.test(req.path) || req.path === '/admin-ui-version.json') {
         res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -760,7 +766,7 @@ app.use((req, res, next) => {
     }
     next();
 });
-app.get('/api/admin/ui-version-public', (req, res) => res.json({ ui: '27.1', redesign: true }));
+app.get('/api/admin/ui-version-public', (req, res) => res.json({ ui: '27.2', redesign: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
@@ -3123,6 +3129,49 @@ app.put('/api/admin/oblivion/traders/:traderId', auth, requireCapability('oblivi
         await dbRun(`UPDATE oblivion_traders SET catalog_override_enabled=?,overlay_mode=?,location_label=?,notes=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE trader_id=?`,[enabled,overlayMode,location,notes,req.user.id,traderId]);
         await auditLog({userId:req.user.id,action:'UPDATE_OBC_TRADER_DRAFT',entity:'oblivion_traders',metadata:{traderId,catalogOverrideEnabled:enabled,overlayMode}});
         res.json({success:true,appliedToServer:false,message:'Rascunho salvo no painel. Nenhuma alteração foi aplicada ao DayZ/Qonzer.'});
+    }catch(e){next(e)}
+});
+
+app.get('/api/admin/oblivion/item-library', auth, requireCapability('server:panel','oblivion:read','oblivion:manage'), async (req,res,next)=>{
+    try{
+        // V27.3 item picker: normalized library from the catalog already imported into this control-plane.
+        // This does NOT claim to enumerate every class shipped by every Workshop PBO; it exposes every
+        // classname currently cataloged by Oblivion Control, enriched with any image already stored in the site.
+        const rows=await dbAll(`SELECT
+            r.classname,
+            MAX(CASE WHEN TRIM(COALESCE(r.item_name,''))<>'' THEN r.item_name ELSE r.classname END) item_name,
+            MAX(COALESCE(r.category,'GERAL')) category,
+            MAX(CASE WHEN TRIM(COALESCE(r.photo,''))<>'' THEN r.photo ELSE '' END) rule_photo,
+            MIN(r.sell_price) min_sell_price,
+            MAX(r.sell_price) max_sell_price,
+            MIN(r.buy_price) min_buy_price,
+            MAX(r.buy_price) max_buy_price,
+            COUNT(DISTINCT r.trader_id) trader_count,
+            GROUP_CONCAT(DISTINCT r.trader_id) traders
+          FROM oblivion_trader_rules r
+          GROUP BY r.classname
+          ORDER BY item_name COLLATE NOCASE, r.classname COLLATE NOCASE`);
+        const global=await dbAll(`SELECT name,category,photo FROM trade_catalog WHERE active=1 ORDER BY id DESC`);
+        const byName=new Map();
+        for(const item of global){
+            const key=String(item.name||'').trim().toLowerCase();
+            if(key&&!byName.has(key))byName.set(key,item);
+        }
+        res.json(rows.map(row=>{
+            const match=byName.get(String(row.item_name||'').trim().toLowerCase());
+            const photo=String(row.rule_photo||match?.photo||'').trim();
+            return {
+                classname:row.classname,
+                item_name:row.item_name||row.classname,
+                category:row.category||match?.category||'GERAL',
+                photo,
+                hasPhoto:!!photo,
+                traderCount:Number(row.trader_count||0),
+                traders:String(row.traders||'').split(',').filter(Boolean),
+                buyPriceRange:[Number(row.min_buy_price||0),Number(row.max_buy_price||0)],
+                sellPriceRange:[Number(row.min_sell_price||0),Number(row.max_sell_price||0)]
+            };
+        }));
     }catch(e){next(e)}
 });
 

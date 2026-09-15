@@ -1,0 +1,60 @@
+OBLIVION STALKER — V27 CENTRAL ADMINISTRATIVA + OBLIVION CONTROL
+
+Objetivo desta versão
+- Redesenhar a Central Administrativa como centro de comando único.
+- Integrar ao painel as funções existentes (facções, usuários, economia, staff, quests, auditoria e operações).
+- Adicionar a área "Servidor & Oblivion Control" para os traders reais já descobertos no DayZ.
+- Preparar catálogo/preços/regras para publicação por release, sem escrever diretamente no runtime do servidor.
+
+NOVO DESIGN
+- Sidebar administrativa fixa/colapsável e navegação por áreas.
+- Hero/status do servidor com Bridge, Qonzer, Workshop e Release.
+- KPIs globais e cards das facções.
+- Layout responsivo para desktop/notebook/tablet/mobile.
+- Visual inspirado em S.T.A.L.K.E.R./Oblivion, mantendo o restante do site compatível.
+
+NOVAS ÁREAS
+- Visão Geral: /admin.html
+- Servidor & Oblivion Control: /admin-oblivion.html
+- Comércio & Traders: /admin-commerce.html
+- Economia: /admin-economy.html
+- Quests: /admin-quests.html
+- Staff & Permissões: /admin-staff.html
+- Operações: /admin-operations.html
+- Auditoria: /admin-audit.html
+- Sistema: /admin-system.html
+
+OBLIVION CONTROL V1.6 NO PAINEL
+- Traders reais: Skad, Yanov, Bandit, Duty e Merc.
+- Mapeamento pelo classname real.
+- Regras de item por trader: compra/venda, preço, estoque, reputação, quantidade máxima e categoria.
+- Source of Truth visível: THIRD_PARTY_STATIC ou OBLIVIONCONTROL_CONFIG.
+- Drafts e releases versionadas.
+- Nenhum NPC de produção é criado pelo site.
+- MercBarter continua fora do controle ativo até existir identidade runtime segura por instância.
+
+SEGURANÇA / PUBLICAÇÃO
+- O navegador NÃO escreve diretamente no servidor DayZ.
+- O painel produz rascunhos/releases.
+- Aplicação real continuará sendo feita pelo bridge allowlisted/fluxo de publicação.
+- Runtime, storage_1, players.db, PBOs de terceiros e Workshop não são alvos de escrita desta versão.
+- QuestSystem permanece fora da integração DayZ nesta fase; a página de Quests existente continua como módulo administrativo do site.
+
+STATUS DA INTEGRAÇÃO
+- Os dados V1.6 são importados como referência/draft local do painel.
+- Qonzer/Workshop não são marcados ONLINE/APPLIED sem evidência real.
+- Overlays de produção permanecem desligados por padrão até a instalação final do OblivionControl.
+
+TESTES
+- Sintaxe JS validada por node --check.
+- Os testes de integração existentes exigem o servidor Node rodando na porta 3000 e dependências npm instaladas.
+
+INSTALAÇÃO
+1. Faça backup da versão atual do site e do banco.
+2. Substitua os arquivos pela V27.
+3. Rode npm install no host.
+4. Reinicie o serviço Node.
+5. Entre como super_admin e abra /admin.html.
+6. Valide /admin-oblivion.html antes de qualquer ativação de overlay.
+
+NÃO instalar o ZIP do OblivionControl dentro do site. O site e o mod DayZ são camadas separadas.

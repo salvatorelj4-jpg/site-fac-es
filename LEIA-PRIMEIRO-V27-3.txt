@@ -1,0 +1,11 @@
+V27.3 — SELETOR VISUAL DE ITENS / CLASSNAMES
+
+NOVO:
+- Botão ESCOLHER ITEM ao criar uma regra por trader.
+- Janela visual com busca, categoria, filtro com/sem foto e todos os classnames atualmente catalogados pelo Oblivion Control.
+- Reutiliza fotos já existentes em regras ou no catálogo global do site quando o nome coincide.
+- Ao selecionar um item, preenche classname, nome, categoria e, quando houver referência no trader selecionado, preços/direções/estoque/reputação.
+- Itens sem foto exibem placeholder claro; nenhuma imagem é inventada.
+
+IMPORTANTE:
+A biblioteca representa todos os classnames catalogados/importados pelo Oblivion Control nesta base (catálogo V1.6 + regras existentes). Ela NÃO afirma enumerar automaticamente todos os classnames existentes dentro de todos os PBOs/Workshop do servidor. Para chegar a esse nível, será necessário importar um catálogo completo auditado do servidor.

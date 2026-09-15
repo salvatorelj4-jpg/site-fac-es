@@ -1,6 +1,6 @@
 {
   "name": "stalker-faction-network",
-  "version": "2.7.0",
+  "version": "2.7.3",
   "description": "Multi-faction management system inspired by S.T.A.L.K.E.R.",
   "main": "server.js",
   "scripts": {

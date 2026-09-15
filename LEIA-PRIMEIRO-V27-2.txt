@@ -1,0 +1,9 @@
+V27.2 — Clareza visual do comércio Mercenário
+
+- Merc Trader renomeado para Trader Mercenário (Rublos).
+- Merc Barter / Bazar renomeado para Bazar Mercenário (Pregos).
+- Bazar deixa explícito que existem 3 instâncias com a mesma classe OG_MercBarterNPC.
+- Controle individual do bazar permanece bloqueado enquanto a identidade de cada instância não for comprovada.
+- Status técnicos longos foram traduzidos para rótulos administrativos legíveis.
+- Migração de inicialização atualiza os nomes mesmo em database.db já existente.
+- Nenhuma alteração em PBO, Qonzer ou comportamento do DayZ.

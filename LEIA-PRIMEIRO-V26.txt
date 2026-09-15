@@ -1,0 +1,24 @@
+V26 — CENTRAL ADMINISTRATIVA GLOBAL + QUESTS + STAFF
+
+PRINCIPAIS MÓDULOS NOVOS
+- Comércio Global: catálogo mestre + Traders/NPCs/Quest Givers.
+- Quests: editor completo de objetivos e recompensas, cadeia por pré-requisito e progresso por pessoa.
+- Staff: permissões individuais concedidas/removidas pelo Super Admin.
+- Economia: visão global dos caixas, bancos gerais, dinheiro pessoal e volume de comércio.
+- Operações: visão agregada de missões, contratos, quests e experimentos.
+- Auditoria: tela global dedicada.
+- Sistema: saúde, configurações globais e acesso aos resets.
+
+MENU GLOBAL
+CENTRAL | FACÇÕES | REGISTRO DA ZONA | COMÉRCIO GLOBAL | ECONOMIA | QUESTS | OPERAÇÕES | STAFF | AUDITORIA | SISTEMA
+
+IMPORTANTE SOBRE O DAYZ
+O painel agora armazena e administra os dados de quests, traders, economia, permissões e catálogo.
+Para que matar mutantes, coletar objetos, entrar em áreas e poderes reais de VPPAdminTools sejam
+atualizados automaticamente pelo jogo, o mod/script DayZ precisa consumir as APIs desta V26.
+A base de dados e os endpoints para quests/progresso já estão preparados para essa integração.
+
+SEGURANÇA
+- Exclusão permanente continua exclusiva do Super Admin.
+- Permissões individuais podem liberar visualização/edição para membros da staff.
+- Super Admin continua com acesso total.
