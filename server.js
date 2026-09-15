@@ -11,6 +11,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 // ==========================================
 // ENVIRONMENT VALIDATION
@@ -20,8 +21,13 @@ const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_DEV';
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : __dirname;
 const DB_PATH = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(DATA_DIR, 'database.db');
 const UPLOAD_DIR = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.join(DATA_DIR, 'uploads');
+const OBC_DATA_ROOT = path.join(DATA_DIR, 'oblivion-control');
+const OBC_BRIDGE_TOKEN = process.env.OBC_BRIDGE_TOKEN || '';
 if (NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('CHANGE_ME'))) {
     throw new Error('FATAL ERROR: JWT_SECRET must be securely set in production.');
+}
+if (NODE_ENV === 'production' && Buffer.byteLength(OBC_BRIDGE_TOKEN, 'utf8') < 32) {
+    throw new Error('FATAL ERROR: OBC_BRIDGE_TOKEN must be at least 32 bytes in production.');
 }
 
 // ==========================================
@@ -29,6 +35,7 @@ if (NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SEC
 // ==========================================
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(OBC_DATA_ROOT, { recursive: true });
 
 const db = new sqlite3.Database(DB_PATH, (err) => {
     if (err) console.error('Database connection error:', err);
@@ -556,7 +563,7 @@ async function initDb() {
 
             // Seed Permissions
             const roles = {
-                super_admin: ['oblivion:read', 'oblivion:manage', 'releases:manage', 'faction:manage', 'users:manage', 'contracts:read', 'contracts:create', 'contracts:update', 'contracts:assign', 'audit:read', 'operations:read', 'operations:manage', 'research:read', 'research:manage', 'members:read', 'members:manage', 'items:read', 'items:manage', 'missions:read', 'missions:manage', 'reports:read', 'reports:manage', 'stalkers:read', 'stalkers:manage', 'config:manage', 'modules:manage'],
+                super_admin: ['oblivion:read', 'oblivion:manage', 'oblivion:publish', 'releases:manage', 'faction:manage', 'users:manage', 'contracts:read', 'contracts:create', 'contracts:update', 'contracts:assign', 'audit:read', 'operations:read', 'operations:manage', 'research:read', 'research:manage', 'members:read', 'members:manage', 'items:read', 'items:manage', 'missions:read', 'missions:manage', 'reports:read', 'reports:manage', 'stalkers:read', 'stalkers:manage', 'config:manage', 'modules:manage'],
                 faction_admin: ['users:manage', 'operations:read', 'operations:manage', 'research:read', 'research:manage', 'members:read', 'members:manage', 'items:read', 'items:manage', 'missions:read', 'missions:manage', 'reports:read', 'reports:manage', 'stalkers:read', 'stalkers:manage', 'contracts:read', 'contracts:create', 'contracts:update', 'contracts:assign', 'config:manage', 'audit:read'],
                 commander: ['operations:read', 'operations:manage', 'members:read', 'items:read', 'items:manage', 'missions:read', 'missions:manage', 'reports:read', 'reports:manage', 'stalkers:read', 'stalkers:manage', 'contracts:read', 'contracts:create', 'contracts:update', 'contracts:assign', 'research:read'],
                 operator: ['operations:read', 'members:read', 'items:read', 'missions:read', 'reports:read', 'reports:manage', 'stalkers:read', 'stalkers:manage', 'research:read', 'research:manage', 'contracts:read'],
@@ -846,6 +853,73 @@ function requireCapability(...capabilities) {
         next();
     };
 }
+
+// ==========================================
+// OBLIVION CONTROL V1.7.1 — PERSISTENT RELEASE CONTROL PLANE
+// ==========================================
+const OBC_PATHS = Object.freeze({
+    'Catalog/items.json': 'items',
+    'TradeSystem/traders.json': 'traders',
+    'TradeSystem/categories.json': 'categories',
+    'TradeSystem/prices.json': 'prices',
+    'Economy/economy.json': 'economy',
+    'Reputation/reputation.json': 'reputation',
+    'NPCs/npcs.json': 'npcs'
+});
+const OBC_ALLOWED_FIELDS = new Set(['buyPrice','sellPrice','enabled','buyEnabled','sellEnabled','stock','reputationRequired','maxQuantityPerTransaction','stockMode','category']);
+const obcId = value => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,95}$/.test(value);
+const obcClone = value => JSON.parse(JSON.stringify(value));
+const obcHash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+const obcAtomicWrite = (file, content) => { const tmp = `${file}.tmp-${process.pid}-${crypto.randomUUID()}`; fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(tmp, content, { flag: 'wx' }); fs.renameSync(tmp, file); };
+const obcReadJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));
+
+function createOblivionControl() {
+    const root = OBC_DATA_ROOT;
+    const draftsRoot = path.join(root, 'drafts');
+    const releasesRoot = path.join(root, 'releases');
+    const recordsRoot = path.join(root, 'release-records');
+    const statusFile = path.join(root, 'bridge-status.json');
+    [draftsRoot, releasesRoot, recordsRoot].forEach(dir => fs.mkdirSync(dir, { recursive: true }));
+    const recordPath = id => path.join(recordsRoot, `${id}.json`);
+    const getRecord = id => { if (!obcId(id) || !fs.existsSync(recordPath(id))) throw Object.assign(new Error('RELEASE_NOT_FOUND'), { statusCode: 404 }); return obcReadJson(recordPath(id)); };
+    const saveRecord = record => obcAtomicWrite(recordPath(record.releaseId), JSON.stringify(record, null, 2) + '\n');
+    const listRecords = () => fs.readdirSync(recordsRoot).filter(x => x.endsWith('.json')).map(x => obcReadJson(path.join(recordsRoot, x))).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
+    async function bundle() {
+        const [traderRows, ruleRows] = await Promise.all([
+            dbAll(`SELECT * FROM oblivion_traders ORDER BY trader_id`),
+            dbAll(`SELECT * FROM oblivion_trader_rules ORDER BY trader_id,classname`)
+        ]);
+        const unique = new Map();
+        for (const r of ruleRows) if (!unique.has(r.classname)) unique.set(r.classname, { id:r.classname, className:r.classname, displayName:r.item_name, category:r.category, enabled:!!r.enabled, confirmed:r.source_of_truth !== 'OWNER_CATALOG_IMPORT', buyEnabled:!!r.buy_enabled, sellEnabled:!!r.sell_enabled, baseBuyPrice:Number(r.buy_price), baseSellPrice:Number(r.sell_price), reputationReward:0, stockControlled:r.stock_mode === 'finite', defaultStock:Number(r.stock), sourceOfTruth:r.source_of_truth, editable:true });
+        const byTrader = new Map(traderRows.map(t => [t.trader_id, ruleRows.filter(r => r.trader_id === t.trader_id)]));
+        const traders = traderRows.map(t => ({ id:t.trader_id, name:t.name, enabled:true, faction:t.faction_code, traderType:'existing-real-npc', locationLabel:t.location_label, entityClass:t.entity_classname, currency:t.currency, catalogOverrideEnabled:!!t.catalog_override_enabled, overlayMode:t.overlay_mode, allowedItemIds:(byTrader.get(t.trader_id)||[]).map(r=>r.classname), soldItems:(byTrader.get(t.trader_id)||[]).map(r=>({ itemId:r.classname,className:r.classname,enabled:!!r.enabled,buyEnabled:!!r.buy_enabled,sellEnabled:!!r.sell_enabled,buyPrice:Number(r.buy_price),sellPrice:Number(r.sell_price),stockMode:r.stock_mode,stock:Number(r.stock),reputationRequired:Number(r.reputation_required),maxQuantityPerTransaction:Number(r.max_quantity),category:r.category,sourceOfTruth:r.source_of_truth })) }));
+        const categories = [...new Set(ruleRows.map(r => r.category))].sort();
+        return { items:{items:[...unique.values()]}, traders:{traders}, categories:{categories}, prices:{defaultBuyPrice:0,defaultSellPrice:0,active:false,overrides:traders.flatMap(t=>t.soldItems.map(r=>({itemId:r.itemId,traderId:t.id,faction:t.faction,buyPrice:r.buyPrice,sellPrice:r.sellPrice,enabled:r.enabled,sourceOfTruth:r.sourceOfTruth})))}, economy:{currency:'RUB',pricesActive:false}, reputation:{enabled:true}, npcs:{existingTraders:traders.map(t=>({traderId:t.id,entityClass:t.entityClass}))} };
+    }
+    const draftPath = id => path.join(draftsRoot, `${id}.json`);
+    const getDraft = id => { if (!obcId(id) || !fs.existsSync(draftPath(id))) throw Object.assign(new Error('DRAFT_NOT_FOUND'), { statusCode:404 }); return obcReadJson(draftPath(id)); };
+    const saveDraft = draft => obcAtomicWrite(draftPath(draft.draftId), JSON.stringify(draft, null, 2) + '\n');
+    return {
+        async traders(){ return (await bundle()).traders.traders; },
+        async trader(id){ if(!obcId(id))throw Object.assign(new Error('INVALID_ID'),{statusCode:400}); const t=(await bundle()).traders.traders.find(x=>x.id===id); if(!t)throw Object.assign(new Error('TRADER_NOT_FOUND'),{statusCode:404}); return t; },
+        async items(id){ const b=await bundle(), t=b.traders.traders.find(x=>x.id===id); if(!t)throw Object.assign(new Error('TRADER_NOT_FOUND'),{statusCode:404}); const allowed=new Set(t.allowedItemIds); return b.items.items.filter(x=>allowed.has(x.id)); },
+        async createDraft(traderId){ await this.trader(traderId); const draft={draftId:`draft-${uuidv4()}`,status:'DRAFT',traderId,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),baseBundle:await bundle(),changes:[]}; saveDraft(draft); return draft; },
+        updateDraft(id,itemId,patch){ if(!obcId(itemId))throw Object.assign(new Error('INVALID_ID'),{statusCode:400}); if(!patch||Object.keys(patch).some(k=>!OBC_ALLOWED_FIELDS.has(k)))throw Object.assign(new Error('UNKNOWN_ITEM_FIELD'),{statusCode:400}); const draft=getDraft(id); if(draft.status!=='DRAFT')throw Object.assign(new Error('DRAFT_NOT_EDITABLE'),{statusCode:409}); const trader=draft.baseBundle.traders.traders.find(t=>t.id===draft.traderId); let rule=trader.soldItems.find(x=>x.itemId===itemId); if(!rule)throw Object.assign(new Error('ITEM_NOT_FOUND'),{statusCode:404}); Object.assign(rule,patch); const item=draft.baseBundle.items.items.find(x=>x.id===itemId); if(item)Object.assign(item,{enabled:!!rule.enabled,buyEnabled:!!rule.buyEnabled,sellEnabled:!!rule.sellEnabled,baseBuyPrice:Number(rule.buyPrice),baseSellPrice:Number(rule.sellPrice)}); draft.changes.push({itemId,patch:obcClone(patch),at:new Date().toISOString()});draft.updatedAt=new Date().toISOString();saveDraft(draft);return draft; },
+        validateDraft(id){ const draft=getDraft(id); const trader=draft.baseBundle.traders.traders.find(t=>t.id===draft.traderId); if(!trader||new Set(trader.soldItems.map(x=>x.itemId)).size!==trader.soldItems.length)throw Object.assign(new Error('DRAFT_INVALID'),{statusCode:400}); for(const r of trader.soldItems){if(!Number.isFinite(Number(r.buyPrice))||Number(r.buyPrice)<0||!Number.isFinite(Number(r.sellPrice))||Number(r.sellPrice)<0)throw Object.assign(new Error('INVALID_PRICE'),{statusCode:400});} draft.status='VALIDATED';draft.validatedAt=new Date().toISOString();saveDraft(draft);return draft; },
+        publishDraft(id){ const draft=this.validateDraft(id), releaseId=`release-${uuidv4()}`, dir=path.join(releasesRoot,releaseId), manifest={schemaVersion:1,releaseId,mode:'export-only',createdAt:new Date().toISOString(),files:[]}; for(const [releasePath,key] of Object.entries(OBC_PATHS)){const text=JSON.stringify(draft.baseBundle[key],null,2)+'\n';obcAtomicWrite(path.join(dir,releasePath),text);manifest.files.push({releasePath,targetKey:`oblivion-control-${key==='items'?'catalog':key}`,sha256:obcHash(text),restartPolicy:'pending-restart'});}obcAtomicWrite(path.join(dir,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');const record={releaseId,status:'PENDING_SERVER_APPLY',createdAt:manifest.createdAt,manifest,draftId:id,snapshotImmutable:true};saveRecord(record);draft.status='PUBLISHED';draft.releaseId=releaseId;saveDraft(draft);return record; },
+        listRecords, getRecord,
+        latest(){return listRecords()[0]||null;},
+        manifest(id){const record=getRecord(id);const manifest=obcReadJson(path.join(releasesRoot,id,'manifest.json'));if(manifest.releaseId!==record.releaseId)throw new Error('RELEASE_MANIFEST_ID_MISMATCH');return manifest;},
+        file(id,key){if(!obcId(key))throw Object.assign(new Error('RELEASE_FILE_UNKNOWN_KEY'),{statusCode:404});const entry=this.manifest(id).files.find(x=>x.targetKey===key);if(!entry||!Object.hasOwn(OBC_PATHS,entry.releasePath))throw Object.assign(new Error('RELEASE_FILE_UNKNOWN_KEY'),{statusCode:404});const bytes=fs.readFileSync(path.join(releasesRoot,id,entry.releasePath));if(obcHash(bytes)!==entry.sha256)throw new Error('RELEASE_FILE_HASH_MISMATCH');return {entry,bytes};},
+        requestRollback(id){const record=getRecord(id);record.status='ROLLBACK_PENDING';record.rollbackRequestedAt=new Date().toISOString();saveRecord(record);return record;},
+        pending(){return listRecords().filter(x=>x.status==='ROLLBACK_PENDING');},
+        status(){const s=fs.existsSync(statusFile)?obcReadJson(statusFile):{status:'OFFLINE'};const online=s.heartbeatAt&&Date.now()-Date.parse(s.heartbeatAt)<=120000;return {...s,online:!!online,connection:online?'ONLINE':'OFFLINE'};},
+        heartbeat(input){const s={serverId:String(input.serverId||process.env.OBC_SERVER_ID||'oblivion-production'),currentReleaseId:input.currentReleaseId||null,status:input.status||'UNKNOWN',lastApply:input.lastApply||null,rolledBackReleaseId:input.rolledBackReleaseId||null,restoredReleaseId:input.restoredReleaseId||null,completedAt:input.completedAt||null,heartbeatAt:new Date().toISOString()};obcAtomicWrite(statusFile,JSON.stringify(s,null,2)+'\n');if(s.rolledBackReleaseId){const r=getRecord(s.rolledBackReleaseId);r.status='ROLLED_BACK';r.rolledBackAt=s.completedAt||s.heartbeatAt;r.restoredReleaseId=s.restoredReleaseId;saveRecord(r);}return s;}
+    };
+}
+const obc = createOblivionControl();
+function requireObcCapability(capability) { return async (req,res,next) => { if(req.user.role==='super_admin')return next(); const caps=await getEffectiveCapabilities(req.user.id,req.user.role); if(!caps.includes(capability))return res.status(403).json({error:'Forbidden: Missing Oblivion capability'}); next(); }; }
+function obcBridgeAuth(req,res,next) { const supplied=req.headers['x-obc-bridge-token']; const expected=OBC_BRIDGE_TOKEN; if(!expected||typeof supplied!=='string'||Buffer.byteLength(supplied)!==Buffer.byteLength(expected)||!crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected)))return res.status(401).json({error:'BRIDGE_AUTH_REQUIRED'});next(); }
 
 function requireFaction(...allowedCodes) {
     return (req, res, next) => {
@@ -4243,9 +4317,28 @@ app.get('/api/audit', auth, requireCapability('audit:read'), async (req, res) =>
     res.json(rows);
 });
 
+// --- V1.7.1 OBLIVION CONTROL API (same Express server; no second port) ---
+app.get('/api/oblivion/traders', auth, requireObcCapability('oblivion:read'), async (req,res,next)=>{try{res.json({traders:await obc.traders()})}catch(e){next(e)}});
+app.get('/api/oblivion/traders/:id/items', auth, requireObcCapability('oblivion:read'), async (req,res,next)=>{try{res.json({items:await obc.items(req.params.id)})}catch(e){next(e)}});
+app.get('/api/oblivion/traders/:id', auth, requireObcCapability('oblivion:read'), async (req,res,next)=>{try{res.json(await obc.trader(req.params.id))}catch(e){next(e)}});
+app.post('/api/oblivion/drafts', auth, requireObcCapability('oblivion:manage'), async (req,res,next)=>{try{res.status(201).json(await obc.createDraft(String(req.body.traderId||'skad')))}catch(e){next(e)}});
+app.patch('/api/oblivion/drafts/:draftId/items/:itemId', auth, requireObcCapability('oblivion:manage'), (req,res,next)=>{try{res.json(obc.updateDraft(req.params.draftId,req.params.itemId,req.body))}catch(e){next(e)}});
+app.post('/api/oblivion/drafts/:draftId/validate', auth, requireObcCapability('oblivion:manage'), (req,res,next)=>{try{res.json(obc.validateDraft(req.params.draftId))}catch(e){next(e)}});
+app.post('/api/oblivion/drafts/:draftId/publish', auth, requireObcCapability('oblivion:publish'), (req,res,next)=>{try{res.status(201).json(obc.publishDraft(req.params.draftId))}catch(e){next(e)}});
+app.get('/api/oblivion/releases', auth, requireObcCapability('oblivion:read'), (req,res)=>res.json({releases:obc.listRecords()}));
+app.get('/api/oblivion/releases/latest', obcBridgeAuth, (req,res)=>res.json(obc.latest()));
+app.get('/api/oblivion/releases/:releaseId', auth, requireObcCapability('oblivion:read'), (req,res,next)=>{try{res.json(obc.getRecord(req.params.releaseId))}catch(e){next(e)}});
+app.post('/api/oblivion/releases/:releaseId/rollback-request', auth, requireObcCapability('oblivion:publish'), (req,res,next)=>{try{res.status(202).json(obc.requestRollback(req.params.releaseId))}catch(e){next(e)}});
+app.get('/api/oblivion/bridge/status', auth, requireObcCapability('oblivion:read'), (req,res)=>res.json(obc.status()));
+app.get('/api/oblivion/bridge/releases/:releaseId/manifest', obcBridgeAuth, (req,res,next)=>{try{res.json(obc.manifest(req.params.releaseId))}catch(e){next(e)}});
+app.get('/api/oblivion/bridge/releases/:releaseId/files/:fileKey', obcBridgeAuth, (req,res,next)=>{try{const file=obc.file(req.params.releaseId,req.params.fileKey);res.set('Content-Type','application/json; charset=utf-8');res.set('X-OBC-SHA256',file.entry.sha256);res.send(file.bytes)}catch(e){next(e)}});
+app.get('/api/oblivion/bridge/rollback-requests', obcBridgeAuth, (req,res)=>res.json({requests:obc.pending()}));
+app.post('/api/oblivion/bridge/heartbeat', obcBridgeAuth, (req,res,next)=>{try{res.json(obc.heartbeat(req.body||{}))}catch(e){next(e)}});
+
 // --- GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
     console.error(err.stack);
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message });
     if (NODE_ENV === 'production') {
         res.status(500).json({ error: 'Internal Server Error' });
     } else {
