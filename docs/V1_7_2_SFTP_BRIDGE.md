@@ -4,9 +4,9 @@ The bridge is an isolated, server-to-server transport for the local/staging phas
 
 ## Configuration
 
-Set these only in the Wispbyte environment (never in GitHub, a ZIP, logs, or the browser): `OBC_API_BASE`, `OBC_BRIDGE_TOKEN`, `OBC_SERVER_ID`, `OBC_QONZER_SFTP_HOST`, `OBC_QONZER_SFTP_PORT`, `OBC_QONZER_SFTP_USERNAME`, `OBC_QONZER_SFTP_PASSWORD`, and `OBC_QONZER_REMOTE_ROOT=/instance/OblivionControl`. `OBC_SFTP_DRY_RUN=true` connects and inventories only; it performs no JSON writes.
+Set these only in the Wispbyte environment (never in GitHub, a ZIP, logs, or the browser): `OBC_API_BASE`, `OBC_BRIDGE_TOKEN`, `OBC_SERVER_ID`, `OBC_QONZER_SFTP_HOST`, `OBC_QONZER_SFTP_PORT`, `OBC_QONZER_SFTP_USERNAME`, `OBC_QONZER_SFTP_PASSWORD`, `OBC_QONZER_SFTP_HOST_FINGERPRINT_SHA256`, and `OBC_QONZER_REMOTE_ROOT=/instance/OblivionControl`. The fingerprint must be the pinned SHA-256 host-key fingerprint obtained from the Qonzer provider's SFTP/File Manager connection details or a trusted first connection; production fails closed when it is missing or different. `OBC_SFTP_DRY_RUN=true` connects, verifies the pinned host key, and inventories only; it performs no JSON writes.
 
-Apply downloads the release through the authenticated bridge API, validates manifest size and SHA-256, snapshots the current remote bytes, uploads a release-specific temporary file, validates it, and atomically renames it. Any failure restores files already changed. Rollback restores the exact backup bytes and emits a heartbeat. Real credentials and Qonzer are intentionally not exercised by this change.
+Apply downloads the release through the authenticated bridge API, validates manifest size and SHA-256, snapshots the current remote bytes, uploads a release-specific temporary file, validates it, and atomically renames it. A per-agent lock rejects concurrent applies and an already-applied release is a no-op. Any failure restores files already changed and removes temporary files. Rollback restores the exact backup bytes and emits a heartbeat. Every high-level operation closes SFTP in `finally`, including partial connection failures. Real credentials and Qonzer are intentionally not exercised by this change.
 
 ## Local validation
 

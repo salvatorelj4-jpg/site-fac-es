@@ -29,6 +29,18 @@ const responseJson = async (response) => {
   return response.json();
 };
 
+const RELEASE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/;
+
+export function validateReleaseId(value) {
+  if (typeof value !== 'string' || !RELEASE_ID_RE.test(value) || value.includes('%') || value.includes('\0')) throw new Error('RELEASE_ID_INVALID');
+  return value;
+}
+
+function normalizeFingerprint(value) {
+  if (Buffer.isBuffer(value)) return `SHA256:${crypto.createHash('sha256').update(value).digest('base64')}`;
+  return String(value || '').trim();
+}
+
 export function normalizeRemoteRoot(value = process.env.OBC_QONZER_REMOTE_ROOT || '/instance/OblivionControl') {
   if (typeof value !== 'string' || !value.startsWith('/') || value.includes('\\') || value.split('/').includes('..')) {
     throw new Error('REMOTE_ROOT_INVALID');
@@ -71,7 +83,9 @@ export class SftpBridgeAgent {
     remoteRoot = process.env.OBC_QONZER_REMOTE_ROOT || '/instance/OblivionControl',
     dryRun = String(process.env.OBC_SFTP_DRY_RUN).toLowerCase() === 'true',
     transport,
-    fetchImpl = globalThis.fetch
+    fetchImpl = globalThis.fetch,
+    hostFingerprint = process.env.OBC_QONZER_SFTP_HOST_FINGERPRINT_SHA256,
+    stateStore = {}
   } = {}) {
     if (!apiBase) throw new Error('OBC_API_BASE_REQUIRED');
     if (!token || Buffer.byteLength(token) < 32) throw new Error('OBC_BRIDGE_TOKEN_REQUIRED');
@@ -83,27 +97,53 @@ export class SftpBridgeAgent {
     this.dryRun = dryRun;
     this.transport = transport;
     this.fetchImpl = fetchImpl;
+    this.hostFingerprint = hostFingerprint ? normalizeFingerprint(hostFingerprint) : '';
+    this.stateStore = stateStore;
+    this.stateStore.currentReleaseId ??= null;
+    this.stateStore.status ??= 'IDLE';
     this.connected = false;
+    this.applyState = 'IDLE';
   }
 
   apiHeaders() { return { Authorization: `Bearer ${this.token}`, 'X-OBC-Server-Id': this.serverId }; }
 
   async connect() {
     if (!this.transport) this.transport = await createSsh2SftpTransport();
-    await this.transport.connect({ host: process.env.OBC_QONZER_SFTP_HOST, port: Number(process.env.OBC_QONZER_SFTP_PORT || 22), username: process.env.OBC_QONZER_SFTP_USERNAME, password: process.env.OBC_QONZER_SFTP_PASSWORD });
-    this.connected = true;
+    if (!this.hostFingerprint && process.env.NODE_ENV !== 'test') throw new Error('SFTP_HOST_FINGERPRINT_REQUIRED');
+    try {
+      await this.transport.connect({ host: process.env.OBC_QONZER_SFTP_HOST, port: Number(process.env.OBC_QONZER_SFTP_PORT || 22), username: process.env.OBC_QONZER_SFTP_USERNAME, password: process.env.OBC_QONZER_SFTP_PASSWORD, hostHash: 'sha256', hostVerifier: (fingerprint) => this.verifyHostKey(fingerprint) });
+      this.connected = true;
+    } catch (error) {
+      this.connected = false;
+      try { await this.transport.end?.(); } catch { /* best effort close after partial connect */ }
+      throw error;
+    }
     const instanceExists = Boolean(await this.transport.exists('/instance'));
     const rootExists = Boolean(await this.transport.exists(this.remoteRoot));
     if (!instanceExists) throw new Error('REMOTE_INSTANCE_NOT_FOUND');
     return { instanceExists, rootExists, root: this.remoteRoot, dryRun: this.dryRun };
   }
 
-  async close() { if (this.connected && this.transport?.end) await this.transport.end(); this.connected = false; }
+  verifyHostKey(actual) {
+    if (!this.hostFingerprint) return process.env.NODE_ENV === 'test';
+    return normalizeFingerprint(actual) === this.hostFingerprint;
+  }
+
+  async close() {
+    const transport = this.transport;
+    this.connected = false;
+    if (transport?.end) await transport.end();
+  }
+
+  async withConnection(operation) {
+    try { await this.connect(); return await operation(); }
+    finally { try { await this.close(); } catch { this.connected = false; } }
+  }
 
   async fetchRelease() {
     const latest = await responseJson(await this.fetchImpl(`${this.apiBase}/api/oblivion/releases/latest`, { headers: this.apiHeaders() }));
     const releaseId = latest.releaseId || latest.id || latest.release?.releaseId;
-    if (!releaseId) throw new Error('RELEASE_ID_MISSING');
+    validateReleaseId(releaseId);
     const manifest = await responseJson(await this.fetchImpl(`${this.apiBase}/api/oblivion/bridge/releases/${encodeURIComponent(releaseId)}/manifest`, { headers: this.apiHeaders() }));
     const entries = manifest.files || manifest.entries;
     if (!Array.isArray(entries) || entries.length !== ALLOWLIST.length) throw new Error('MANIFEST_ALLOWLIST_MISMATCH');
@@ -130,13 +170,22 @@ export class SftpBridgeAgent {
   }
 
   async applyLatest() {
-    if (!this.connected) await this.connect();
+    if (this.applyState === 'IN_PROGRESS') throw new Error('APPLY_ALREADY_IN_PROGRESS');
+    this.applyState = 'IN_PROGRESS';
+    try { return await this.withConnection(() => this._applyLatest()); }
+    finally { if (this.applyState === 'IN_PROGRESS') this.applyState = 'IDLE'; }
+  }
+
+  async _applyLatest() {
     if (this.dryRun) return this.dryRunCheck();
     const release = await this.fetchRelease();
+    validateReleaseId(release.releaseId);
+    if (this.stateStore.currentReleaseId === release.releaseId && this.stateStore.status === 'APPLIED') return { status: 'ALREADY_APPLIED', releaseId: release.releaseId, writes: 0 };
     const backupRoot = `${this.remoteRoot}/.backups/${release.releaseId}`;
     await this.transport.mkdir(backupRoot, true);
     const backupManifest = {};
     const changed = [];
+    const temporary = new Set();
     try {
       for (const relative of ALLOWLIST) {
         const target = safeRemotePath(this.remoteRoot, relative);
@@ -149,43 +198,60 @@ export class SftpBridgeAgent {
       for (const relative of ALLOWLIST) {
         const target = safeRemotePath(this.remoteRoot, relative);
         const temp = `${target}.tmp-${release.releaseId}`;
+        temporary.add(temp);
         const file = release.files.get(relative);
         await this.transport.mkdir(posix.dirname(target), true);
         await this.transport.put(file.data, temp);
         const uploaded = asBuffer(await this.transport.get(temp));
         if (uploaded.length !== file.size || sha256(uploaded) !== file.sha256) throw new Error('REMOTE_SHA_VALIDATION_FAILED');
         await this.transport.rename(temp, target);
+        temporary.delete(temp);
         changed.push(relative);
       }
     } catch (error) {
       await this.restoreBackup(release.releaseId, changed, backupManifest).catch(() => {});
       throw error;
+    } finally {
+      for (const temp of temporary) { try { if (await this.transport.exists(temp)) await this.transport.delete(temp); } catch { /* best effort cleanup */ } }
     }
+    this.stateStore.currentReleaseId = release.releaseId;
+    this.stateStore.status = 'APPLIED';
     await this.heartbeat({ status: 'APPLIED', currentReleaseId: release.releaseId });
     return { status: 'APPLIED', releaseId: release.releaseId, files: ALLOWLIST.length, backupRoot };
   }
 
   async restoreBackup(releaseId, relatives = ALLOWLIST, manifest) {
+    validateReleaseId(releaseId);
     const backupRoot = `${this.remoteRoot}/.backups/${releaseId}`;
     const metadata = manifest || JSON.parse(asBuffer(await this.transport.get(`${backupRoot}/manifest.json`)).toString('utf8'));
     for (const relative of relatives) {
       const target = safeRemotePath(this.remoteRoot, relative);
       const backup = `${backupRoot}/${relative}`;
-      if (metadata[relative]?.exists) { const data = asBuffer(await this.transport.get(backup)); if (metadata[relative].sha256 && sha256(data) !== metadata[relative].sha256) throw new Error('BACKUP_SHA256_MISMATCH'); await this.transport.put(data, `${target}.rollback-tmp-${releaseId}`); await this.transport.rename(`${target}.rollback-tmp-${releaseId}`, target); }
-      else if (await this.transport.exists(target)) await this.transport.delete(target);
+      const temporary = `${target}.rollback-tmp-${releaseId}`;
+      try {
+        if (metadata[relative]?.exists) { const data = asBuffer(await this.transport.get(backup)); if (metadata[relative].sha256 && sha256(data) !== metadata[relative].sha256) throw new Error('BACKUP_SHA256_MISMATCH'); await this.transport.put(data, temporary); await this.transport.rename(temporary, target); }
+        else if (await this.transport.exists(target)) await this.transport.delete(target);
+      } finally { try { if (await this.transport.exists(temporary)) await this.transport.delete(temporary); } catch { /* best effort cleanup */ } }
     }
   }
 
   async rollback(releaseId) {
-    if (!this.connected) await this.connect();
+    validateReleaseId(releaseId);
+    return this.withConnection(() => this._rollback(releaseId));
+  }
+
+  async _rollback(releaseId) {
     const backupRoot = `${this.remoteRoot}/.backups/${releaseId}`;
     if (!await this.transport.exists(`${backupRoot}/manifest.json`)) throw new Error('BACKUP_NOT_FOUND');
     await this.restoreBackup(releaseId);
+    this.stateStore.currentReleaseId = null;
+    this.stateStore.status = 'ROLLED_BACK';
     await this.heartbeat({ status: 'ROLLED_BACK', rolledBackReleaseId: releaseId });
     return { status: 'ROLLED_BACK', releaseId };
   }
 
   async heartbeat(extra = {}) {
+    for (const key of ['currentReleaseId', 'rolledBackReleaseId', 'restoredReleaseId']) if (extra[key] != null) validateReleaseId(extra[key]);
     const response = await this.fetchImpl(`${this.apiBase}/api/oblivion/bridge/heartbeat`, { method: 'POST', headers: { ...this.apiHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify({ serverId: this.serverId, ...extra }) });
     return responseJson(response);
   }
