@@ -140,6 +140,7 @@ export class SftpBridgeAgent {
     this.stateStore = stateStore || new PersistentStateStore({ filePath: stateFile, serverId: this.serverId }).load();
     this.persistentState = stateStore ? null : new PersistentStateStore({ filePath: stateFile, serverId: this.serverId });
     this.connected = false;
+    this.hostKeyVerified = false;
     this.applyState = 'IDLE';
   }
 
@@ -165,8 +166,9 @@ export class SftpBridgeAgent {
   }
 
   verifyHostKey(actual) {
-    if (!this.hostFingerprint) return process.env.NODE_ENV === 'test';
-    return normalizeFingerprint(actual) === this.hostFingerprint;
+    const verified = this.hostFingerprint ? normalizeFingerprint(actual) === this.hostFingerprint : process.env.NODE_ENV === 'test';
+    this.hostKeyVerified = verified;
+    return verified;
   }
 
   async close() {
