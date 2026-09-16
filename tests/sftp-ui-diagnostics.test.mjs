@@ -35,8 +35,8 @@ test('PUBLISH_CREATES_PENDING_RELEASE_AND_API_HELPER_COMPATIBILITY', () => {
 });
 
 test('BRIDGE_FAILURE_IS_NON_CRITICAL_IN_NORMAL_UI', () => {
-  assert.match(panel, /s\.connection==='CONNECTED'\?'ONLINE':'AGUARDANDO CONEXÃO'/);
-  assert.doesNotMatch(panel, /SFTP|sftp|bridge.*FAIL|FAIL.*bridge/i);
+  assert.match(panel, /runtime-status/);
+  assert.doesNotMatch(panel, /TESTAR CONEXÃO SFTP|sftpDryRun|bridge.*FAIL|FAIL.*bridge/i);
 });
 
 test('PANEL_ONLINE_STATUS_AND_NO_STAGING_BLOCKER_LANGUAGE', () => {
@@ -44,15 +44,17 @@ test('PANEL_ONLINE_STATUS_AND_NO_STAGING_BLOCKER_LANGUAGE', () => {
   const overview = fs.readFileSync('public/admin-oblivion.html', 'utf8');
   const commerce = fs.readFileSync('public/admin-commerce.html', 'utf8');
   const rail = fs.readFileSync('public/admin-control.js', 'utf8');
-  for (const page of [central, overview]) assert.match(page, /<small>Painel<\/small><b>ONLINE<\/b>/);
+  for (const page of [central, overview]) assert.match(page, /<small>Painel<\/small>/);
+  assert.match(central, /runtime-status/);
+  assert.match(overview, /runtime-status/);
   assert.doesNotMatch(overview, /Modo staging|bridge ainda não está conectado/);
   assert.doesNotMatch(commerce, /STAGING \/ NÃO APLICADO/);
   assert.doesNotMatch(rail, /modo administrativo \/ staging/);
 });
 
 test('BRIDGE_REQUIRES_REAL_HEARTBEAT_FOR_CONNECTED_STATUS', () => {
-  assert.match(server, /const bridgeLive = obc\.status\(\)\.online === true/);
-  assert.match(server, /bridgeStatus: bridgeLive \? 'CONNECTED' : 'AGUARDANDO_CONEXAO'/);
+  assert.match(server, /const runtime = obc\.runtimeStatus\(\)/);
+  assert.match(server, /bridgeStatus: runtime\.bridge\.status === 'CONNECTED' \? 'CONNECTED' : 'AGUARDANDO_CONEXAO'/);
   assert.match(fs.readFileSync('public/admin-control.js', 'utf8'), /MOD_INSTALADO/);
 });
 
