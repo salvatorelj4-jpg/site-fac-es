@@ -12,6 +12,7 @@
     "test:sftp-dry-run": "node --test tests/sftp-dry-run-runner.test.mjs",
     "test:sftp-diagnostics": "node --test tests/sftp-dry-run-diagnostics.test.mjs",
     "test:sftp-405-diagnostic": "node --test tests/sftp-405-diagnostic.test.mjs",
+    "test:sftp-http-diagnostic": "node --test tests/sftp-405-diagnostic.test.mjs",
     "test:admin-sftp-dry-run": "node --test tests/admin-sftp-dry-run.test.mjs",
     "obc:sftp:dry-run": "node bridge/run-sftp-dry-run.mjs",
     "seed": "node scripts/seed.js",
