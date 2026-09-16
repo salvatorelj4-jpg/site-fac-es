@@ -521,8 +521,8 @@ async function initDb() {
             const obcSettings = [
                 ['obc.release_candidate','V1.6 RC1.2'],
                 ['obc.bridge_status','NOT_CONNECTED'],
-                ['obc.qonzer_status','NOT_INSTALLED'],
-                ['obc.workshop_status','NOT_PUBLISHED'],
+                ['obc.qonzer_status','MOD_INSTALADO'],
+                ['obc.workshop_status','PUBLICADO'],
                 ['obc.prices_active','false'],
                 ['obc.catalog_overrides_default','false']
             ];
@@ -913,7 +913,7 @@ function createOblivionControl() {
         async createDraft(traderId){ await this.trader(traderId); const draft={draftId:`draft-${uuidv4()}`,status:'DRAFT',traderId,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),baseBundle:await bundle(),changes:[]}; saveDraft(draft); return draft; },
         updateDraft(id,itemId,patch){ if(!obcId(itemId))throw Object.assign(new Error('INVALID_ID'),{statusCode:400}); if(!patch||Object.keys(patch).some(k=>!OBC_ALLOWED_FIELDS.has(k)))throw Object.assign(new Error('UNKNOWN_ITEM_FIELD'),{statusCode:400}); const draft=getDraft(id); if(draft.status!=='DRAFT')throw Object.assign(new Error('DRAFT_NOT_EDITABLE'),{statusCode:409}); const trader=draft.baseBundle.traders.traders.find(t=>t.id===draft.traderId); let rule=trader.soldItems.find(x=>x.itemId===itemId); if(!rule)throw Object.assign(new Error('ITEM_NOT_FOUND'),{statusCode:404}); Object.assign(rule,patch); const item=draft.baseBundle.items.items.find(x=>x.id===itemId); if(item)Object.assign(item,{enabled:!!rule.enabled,buyEnabled:!!rule.buyEnabled,sellEnabled:!!rule.sellEnabled,baseBuyPrice:Number(rule.buyPrice),baseSellPrice:Number(rule.sellPrice)}); draft.changes.push({itemId,patch:obcClone(patch),at:new Date().toISOString()});draft.updatedAt=new Date().toISOString();saveDraft(draft);return draft; },
         validateDraft(id){ const draft=getDraft(id); const trader=draft.baseBundle.traders.traders.find(t=>t.id===draft.traderId); if(!trader||new Set(trader.soldItems.map(x=>x.itemId)).size!==trader.soldItems.length)throw Object.assign(new Error('DRAFT_INVALID'),{statusCode:400}); for(const r of trader.soldItems){if(!Number.isFinite(Number(r.buyPrice))||Number(r.buyPrice)<0||!Number.isFinite(Number(r.sellPrice))||Number(r.sellPrice)<0)throw Object.assign(new Error('INVALID_PRICE'),{statusCode:400});} draft.status='VALIDATED';draft.validatedAt=new Date().toISOString();saveDraft(draft);return draft; },
-        publishDraft(id){ const draft=this.validateDraft(id), releaseId=`release-${uuidv4()}`, dir=path.join(releasesRoot,releaseId), manifest={schemaVersion:1,releaseId,mode:'export-only',createdAt:new Date().toISOString(),files:[]}; for(const [releasePath,key] of Object.entries(OBC_PATHS)){const text=JSON.stringify(draft.baseBundle[key],null,2)+'\n';obcAtomicWrite(path.join(dir,releasePath),text);manifest.files.push({releasePath,targetKey:`oblivion-control-${key==='items'?'catalog':key}`,sha256:obcHash(text),restartPolicy:'pending-restart'});}obcAtomicWrite(path.join(dir,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');const record={releaseId,status:'PENDING_SERVER_APPLY',createdAt:manifest.createdAt,manifest,draftId:id,snapshotImmutable:true};saveRecord(record);draft.status='PUBLISHED';draft.releaseId=releaseId;saveDraft(draft);return record; },
+        publishDraft(id){ const draft=this.validateDraft(id), releaseId=`release-${uuidv4()}`, dir=path.join(releasesRoot,releaseId), manifest={schemaVersion:1,releaseId,mode:'export-only',createdAt:new Date().toISOString(),files:[]}; for(const [releasePath,key] of Object.entries(OBC_PATHS)){const text=JSON.stringify(draft.baseBundle[key],null,2)+'\n';obcAtomicWrite(path.join(dir,releasePath),text);manifest.files.push({releasePath,targetKey:`oblivion-control-${key==='items'?'catalog':key}`,sha256:obcHash(text),restartPolicy:'pending-restart'});}obcAtomicWrite(path.join(dir,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');const record={releaseId,status:'PENDING_BRIDGE',createdAt:manifest.createdAt,manifest,draftId:id,snapshotImmutable:true};saveRecord(record);draft.status='PUBLISHED';draft.releaseId=releaseId;saveDraft(draft);return record; },
         listRecords, getRecord,
         latest(){return listRecords()[0]||null;},
         manifest(id){const record=getRecord(id);const manifest=obcReadJson(path.join(releasesRoot,id,'manifest.json'));if(manifest.releaseId!==record.releaseId)throw new Error('RELEASE_MANIFEST_ID_MISMATCH');return manifest;},
@@ -3183,13 +3183,14 @@ app.get('/api/admin/oblivion/overview', auth, requireCapability('server:panel','
         const latestRelease = await dbGet(`SELECT id,release_code,status,created_at,approved_at FROM oblivion_releases ORDER BY id DESC LIMIT 1`);
         const tradeEvents = await dbGet(`SELECT COUNT(*) count FROM commerce_transactions`);
         const bridgeConfigured = !!String(process.env.OBLIVION_BRIDGE_URL || '').trim();
+        const bridgeLive = obc.status().online === true;
         res.json({
             integration:{
                 releaseCandidate: settings['obc.release_candidate']?.value || 'V1.6',
-                bridgeStatus: bridgeConfigured ? (settings['obc.bridge_status']?.value || 'CONFIGURED_NOT_VERIFIED') : 'NOT_CONNECTED',
+                bridgeStatus: bridgeLive ? 'CONNECTED' : 'AGUARDANDO_CONEXAO',
                 bridgeConfigured,
-                qonzerStatus: settings['obc.qonzer_status']?.value || 'NOT_INSTALLED',
-                workshopStatus: settings['obc.workshop_status']?.value || 'NOT_PUBLISHED',
+                qonzerStatus: settings['obc.qonzer_status']?.value === 'NOT_INSTALLED' ? 'MOD_INSTALADO' : (settings['obc.qonzer_status']?.value || 'MOD_INSTALADO'),
+                workshopStatus: settings['obc.workshop_status']?.value === 'NOT_PUBLISHED' ? 'PUBLICADO' : (settings['obc.workshop_status']?.value || 'PUBLICADO'),
                 pricesActive: String(settings['obc.prices_active']?.value || 'false').toLowerCase()==='true',
                 catalogOverridesDefault: String(settings['obc.catalog_overrides_default']?.value || 'false').toLowerCase()==='true'
             },
