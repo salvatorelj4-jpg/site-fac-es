@@ -18,6 +18,9 @@ export async function runAdminSftpDryRun({ env = process.env, createAgent = () =
   if (inFlight) throw new AdminSftpDryRunError('SFTP_DRY_RUN_BUSY', 409);
   inFlight = true;
   let agent;
+  let result;
+  let primaryError;
+  let connectionClosed = false;
   try {
     agent = await createAgent();
     const connection = await timeout(agent.connect(), timeoutMs).catch((error) => {
@@ -36,16 +39,24 @@ export async function runAdminSftpDryRun({ env = process.env, createAgent = () =
     agent.diagnosticFinish?.();
     const diagnostic = agent.diagnosticSnapshot?.() || { stages: [], hostKeyVerify: 'PASS', elapsedMs: 0 };
     diagnostic.stage = 'CLOSE';
-    return { ok: true, sftpConnect: 'PASS', hostKeyVerify: 'PASS', remoteInstanceFound: connection.instanceExists === true, remoteRoot: connection.root, remoteRootExists: connection.rootExists === true, dryRun: true, writes: 0, backupsCreated: 0, filesChanged: 0, connectionClosed: true, diagnostic };
+    result = { ok: true, sftpConnect: 'PASS', hostKeyVerify: 'PASS', remoteInstanceFound: connection.instanceExists === true, remoteRoot: connection.root, remoteRootExists: connection.rootExists === true, dryRun: true, writes: 0, backupsCreated: 0, filesChanged: 0, diagnostic };
   } catch (error) {
-    if (error instanceof AdminSftpDryRunError) {
-      if (!error.diagnostic) error.diagnostic = agent?.diagnosticSnapshot?.() || { stage: 'SSH_HANDSHAKE', hostKeyVerify: 'NOT_REACHED', elapsedMs: timeoutMs };
-      throw error;
-    }
-    const diagnostic = agent?.diagnosticSnapshot?.() || { stage: 'SSH_HANDSHAKE', hostKeyVerify: 'NOT_REACHED', elapsedMs: timeoutMs };
-    throw new AdminSftpDryRunError(String(error?.code || 'SFTP_DRY_RUN_FAILED'), 502, diagnostic);
+    primaryError = error;
   } finally {
-    try { await timeout(Promise.resolve(agent?.close?.()), 3000); } catch {}
+    try {
+      if (typeof agent?.close !== 'function') throw new Error('SFTP_CLOSE_UNAVAILABLE');
+      await timeout(Promise.resolve(agent.close()), 3000);
+      connectionClosed = true;
+    } catch {}
     inFlight = false;
   }
+  if (primaryError) {
+    const error = primaryError instanceof AdminSftpDryRunError ? primaryError : new AdminSftpDryRunError(String(primaryError?.code || 'SFTP_DRY_RUN_FAILED'), 502, agent?.diagnosticSnapshot?.() || { stage: 'SSH_HANDSHAKE', hostKeyVerify: 'NOT_REACHED', elapsedMs: timeoutMs });
+    if (!error.diagnostic) error.diagnostic = agent?.diagnosticSnapshot?.() || { stage: 'SSH_HANDSHAKE', hostKeyVerify: 'NOT_REACHED', elapsedMs: timeoutMs };
+    error.connectionClosed = connectionClosed;
+    throw error;
+  }
+  result.connectionClosed = connectionClosed;
+  if (!connectionClosed) { result.ok = false; result.code = 'SFTP_DRY_RUN_CLOSE_FAILED'; result.status = 'FAIL'; }
+  return result;
 }
