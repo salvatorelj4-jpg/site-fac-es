@@ -13,6 +13,15 @@ test('timeout is handled and connection is closed', async () => { const agent = 
 test('concurrent dry-run is rejected and no write methods are called', async () => { let release; const wait = new Promise((resolve) => { release = resolve; }); const agent = { ...mockAgent(), connect: async () => { await wait; return { instanceExists:true,root:'/instance/OblivionControl',rootExists:true }; } }; const first = runAdminSftpDryRun({ env: { OBC_SFTP_DRY_RUN:'true' }, createAgent: () => agent }); await new Promise((resolve) => setImmediate(resolve)); await assert.rejects(() => runAdminSftpDryRun({ env: { OBC_SFTP_DRY_RUN:'true' }, createAgent: () => mockAgent() }), /SFTP_DRY_RUN_BUSY/); release(); await first; });
 test('missing remote root is reported without attempting a write', async () => { let listed = false; const agent = mockAgent(); agent.connect = async () => ({ instanceExists:true,root:'/instance/OblivionControl',rootExists:false }); agent.transport.list = async () => { listed = true; return []; }; const result = await runAdminSftpDryRun({ env:{ OBC_SFTP_DRY_RUN:'true' }, createAgent:() => agent }); assert.equal(result.remoteRootExists, false); assert.equal(result.ok, true); assert.equal(listed, false); });
 test('host-key verification failure is rejected', async () => { await assert.rejects(() => runAdminSftpDryRun({ env:{ OBC_SFTP_DRY_RUN:'true' }, createAgent:() => mockAgent({ hostKeyVerified:false }) }), /HOST_KEY_MISMATCH/); });
+test('structured failure retains only safe remote diagnostic facts', async () => {
+  await assert.rejects(() => runAdminSftpDryRun({ env:{ OBC_SFTP_DRY_RUN:'true' }, createAgent:() => mockAgent({ hostKeyVerified:false }) }), (error) => {
+    assert.equal(error.remoteInstanceFound, true);
+    assert.equal(error.remoteRoot, '/instance/OblivionControl');
+    assert.equal(error.remoteRootExists, true);
+    assert.doesNotMatch(JSON.stringify(error), /password|token|jwt|secret/i);
+    return true;
+  });
+});
 test('CLOSE_SUCCESS_REPORTS_TRUE', async () => { const agent=mockAgent(); const result=await runAdminSftpDryRun({ env:{ OBC_SFTP_DRY_RUN:'true' }, createAgent:()=>agent }); assert.equal(agent.closed,true); assert.equal(result.connectionClosed,true); });
 test('CLOSE_FAILURE_REPORTS_FALSE', async () => { const agent=mockAgent({ closeFail:true }); const result=await runAdminSftpDryRun({ env:{ OBC_SFTP_DRY_RUN:'true' }, createAgent:()=>agent }); assert.equal(result.connectionClosed,false); assert.equal(result.code,'SFTP_DRY_RUN_CLOSE_FAILED'); });
 test('PRIMARY_ERROR_PRESERVED_WHEN_CLOSE_FAILS', async () => { const agent=mockAgent({ closeFail:true, hostKeyVerified:false }); await assert.rejects(() => runAdminSftpDryRun({ env:{ OBC_SFTP_DRY_RUN:'true' }, createAgent:()=>agent }), (error) => error.code === 'HOST_KEY_MISMATCH' && error.connectionClosed === false); });

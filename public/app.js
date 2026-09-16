@@ -271,7 +271,22 @@ async function api(endpoint, options = {}) {
     }
 
     if (!response.ok) {
-      throw new Error(data.message || data.error || data || 'Erro na requisição');
+      const error = new Error(data?.message || data?.error || data?.code || data || 'Erro na requisição');
+      // This one administrative endpoint is allowed to expose only its
+      // deliberately sanitized diagnostic contract to the panel.
+      if (endpoint === '/api/oblivion/admin/connection-check' && data && typeof data === 'object') {
+        error.obcSftpDiagnostic = {
+          code: typeof data.code === 'string' ? data.code : null,
+          stage: typeof data.stage === 'string' ? data.stage : null,
+          elapsedMs: Number.isFinite(Number(data.elapsedMs)) ? Number(data.elapsedMs) : null,
+          hostKeyVerify: typeof data.hostKeyVerify === 'string' ? data.hostKeyVerify : null,
+          remoteInstanceFound: typeof data.remoteInstanceFound === 'boolean' ? data.remoteInstanceFound : null,
+          remoteRoot: data.remoteRoot === '/instance/OblivionControl' ? data.remoteRoot : null,
+          remoteRootExists: typeof data.remoteRootExists === 'boolean' ? data.remoteRootExists : null,
+          connectionClosed: typeof data.connectionClosed === 'boolean' ? data.connectionClosed : null
+        };
+      }
+      throw error;
     }
 
     return data;
