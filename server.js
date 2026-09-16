@@ -777,8 +777,10 @@ app.use((req, res, next) => {
 });
 app.get('/api/admin/ui-version-public', (req, res) => res.json({ ui: '27.2', redesign: true }));
 app.options('/api/oblivion/admin/sftp-dry-run', (req, res) => res.status(204).end());
+app.options('/api/oblivion/admin/connection-check', (req, res) => res.status(204).end());
 app.get('/api/oblivion/admin/sftp-dry-run-health', (req, res) => res.json({ ok:true, route:'sftp-dry-run-health', serverCommit:OBC_BUILD_ID, methods:['POST'], dryRunEnabled:String(process.env.OBC_SFTP_DRY_RUN).toLowerCase()==='true' }));
 app.use('/api/oblivion/admin/sftp-dry-run', (req, res, next) => { console.log(`OBC_SFTP_HTTP_TRACE timestamp=${new Date().toISOString()} method=${req.method} path=/api/oblivion/admin/sftp-dry-run routeReached=true`); next(); });
+app.use('/api/oblivion/admin/connection-check', (req, res, next) => { console.log(`OBC_SFTP_HTTP_TRACE timestamp=${new Date().toISOString()} method=${req.method} path=/api/oblivion/admin/connection-check routeReached=true`); next(); });
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
@@ -4349,7 +4351,7 @@ app.get('/api/oblivion/bridge/releases/:releaseId/files/:fileKey', obcBridgeAuth
 app.get('/api/oblivion/bridge/rollback-requests', obcBridgeAuth, (req,res)=>res.json({requests:obc.pending()}));
 app.post('/api/oblivion/bridge/heartbeat', obcBridgeAuth, (req,res,next)=>{try{res.json(obc.heartbeat(req.body||{}))}catch(e){next(e)}});
 let obcAdminSftpDryRunRequest = false;
-app.post('/api/oblivion/admin/sftp-dry-run', auth, requireObcCapability('oblivion:manage'), async (req,res)=>{
+async function handleObcAdminSftpDryRun(req,res){
     if (obcAdminSftpDryRunRequest) return res.status(409).json({ ok:false, error:'SFTP_DRY_RUN_BUSY', status:'FAIL' });
     obcAdminSftpDryRunRequest = true;
     try {
@@ -4360,7 +4362,9 @@ app.post('/api/oblivion/admin/sftp-dry-run', auth, requireObcCapability('oblivio
         const diagnostic = error?.diagnostic && typeof error.diagnostic === 'object' ? error.diagnostic : { stage:'CONFIG_VALIDATION', hostKeyVerify:'NOT_REACHED', elapsedMs:0 };
         return res.status(Number(error?.status) || 503).json({ ok:false, code, stage:diagnostic.stage, elapsedMs:Number(diagnostic.elapsedMs)||0, hostKeyVerify:diagnostic.hostKeyVerify || 'NOT_REACHED', diagnosticStages:Array.isArray(diagnostic.stages) ? diagnostic.stages : [], writes:0, filesChanged:0, connectionClosed:error?.connectionClosed === true });
     } finally { obcAdminSftpDryRunRequest = false; }
-});
+}
+app.post('/api/oblivion/admin/sftp-dry-run', auth, requireObcCapability('oblivion:manage'), handleObcAdminSftpDryRun);
+app.post('/api/oblivion/admin/connection-check', auth, requireObcCapability('oblivion:manage'), handleObcAdminSftpDryRun);
 
 // --- GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
