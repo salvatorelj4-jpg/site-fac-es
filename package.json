@@ -10,6 +10,7 @@
     "test:oblivion": "node --test tests/sftp-agent.test.mjs tests/oblivion-v171.test.js",
     "test:skad-migration": "node --test tests/skad-migration.test.mjs",
     "test:sftp-dry-run": "node --test tests/sftp-dry-run-runner.test.mjs",
+    "test:sftp-diagnostics": "node --test tests/sftp-dry-run-diagnostics.test.mjs",
     "test:admin-sftp-dry-run": "node --test tests/admin-sftp-dry-run.test.mjs",
     "obc:sftp:dry-run": "node bridge/run-sftp-dry-run.mjs",
     "seed": "node scripts/seed.js",
