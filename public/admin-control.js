@@ -33,9 +33,9 @@
     try{
       const d=await api('/api/admin/oblivion/overview');
       const connected=d?.integration?.bridgeStatus==='CONNECTED';
-      const installed=d?.integration?.qonzerStatus==='INSTALLED';
+      const installed=['INSTALLED','MOD_INSTALADO'].includes(d?.integration?.qonzerStatus);
       dot.className='admin-dot '+(connected&&installed?'ok':connected||installed?'warn':'');
-      label.textContent=connected&&installed?'servidor integrado':'modo administrativo / staging';
+      label.textContent=connected&&installed?'servidor integrado':'painel online / bridge aguardando conexão';
     }catch(_){dot.className='admin-dot danger';label.textContent='status indisponível';}
   };
 
@@ -53,8 +53,13 @@
       OWNER_RISK_ACCEPTED_NOT_LIVE_TESTED:'RISCO ACEITO • NÃO TESTADO AO VIVO',
       VALIDATED_LOCAL:'VALIDADO LOCALMENTE',
       NOT_CONNECTED:'NÃO CONECTADO',
-      NOT_INSTALLED:'NÃO INSTALADO',
-      NOT_PUBLISHED:'NÃO PUBLICADO',
+      NOT_INSTALLED:'MOD INSTALADO',
+      NOT_PUBLISHED:'PUBLICADO',
+      MOD_INSTALADO:'MOD INSTALADO',
+      INSTALLED:'MOD INSTALADO',
+      PUBLICADO:'PUBLICADO',
+      PUBLISHED:'PUBLICADO',
+      AGUARDANDO_CONEXAO:'AGUARDANDO CONEXÃO',
       READY_STATIC:'PRONTO ESTÁTICO',
       NOT_RUN:'NÃO EXECUTADO'
     };
@@ -64,7 +69,7 @@
   window.adminStateBadge=function(value){
     const raw=String(value??'').toUpperCase();
     let cls='muted';
-    if(['PASS','READY','CONNECTED','INSTALLED','ONLINE','ACTIVE','APPROVED','EXPORTED','VALIDATED'].some(x=>raw.includes(x))) cls='ok';
+    if(['PASS','READY','CONNECTED','INSTALLED','MOD_INSTALADO','PUBLICADO','PUBLISHED','ONLINE','ACTIVE','APPROVED','EXPORTED','VALIDATED'].some(x=>raw.includes(x))) cls='ok';
     if(['PENDING','NOT_RUN','NOT_CONNECTED','NOT_INSTALLED','NOT_PUBLISHED','DRAFT','AMBIGUOUS','RISK_ACCEPTED','READY_STATIC'].some(x=>raw.includes(x))) cls='warn';
     if(['FAIL','ERROR','BLOCKED','REJECTED'].some(x=>raw.includes(x))) cls='danger';
     return `<span class="admin-badge ${cls}">${escapeHtml(adminStateLabel(value))}</span>`;
