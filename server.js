@@ -19,6 +19,7 @@ const { pathToFileURL } = require('url');
 // ==========================================
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_DEV';
+const OBC_BUILD_ID = process.env.OBC_BUILD_ID || process.env.BUILD_ID || process.env.GIT_COMMIT || 'unknown';
 const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : __dirname;
 const DB_PATH = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.join(DATA_DIR, 'database.db');
 const UPLOAD_DIR = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.join(DATA_DIR, 'uploads');
@@ -775,6 +776,9 @@ app.use((req, res, next) => {
     next();
 });
 app.get('/api/admin/ui-version-public', (req, res) => res.json({ ui: '27.2', redesign: true }));
+app.options('/api/oblivion/admin/sftp-dry-run', (req, res) => res.status(204).end());
+app.get('/api/oblivion/admin/sftp-dry-run-health', (req, res) => res.json({ ok:true, route:'sftp-dry-run-health', serverCommit:OBC_BUILD_ID, methods:['POST'], dryRunEnabled:String(process.env.OBC_SFTP_DRY_RUN).toLowerCase()==='true' }));
+app.use('/api/oblivion/admin/sftp-dry-run', (req, res, next) => { console.log(`OBC_SFTP_HTTP_TRACE timestamp=${new Date().toISOString()} method=${req.method} path=/api/oblivion/admin/sftp-dry-run routeReached=true`); next(); });
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOAD_DIR));
 
