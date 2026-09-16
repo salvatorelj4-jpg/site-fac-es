@@ -15,6 +15,7 @@
     "test:sftp-http-diagnostic": "node --test tests/sftp-405-diagnostic.test.mjs",
     "test:neutral-connection-check": "node --test tests/neutral-connection-check.test.mjs",
     "test:admin-sftp-dry-run": "node --test tests/admin-sftp-dry-run.test.mjs",
+    "test:sftp-ui-diagnostics": "node --test tests/sftp-ui-diagnostics.test.mjs",
     "obc:sftp:dry-run": "node bridge/run-sftp-dry-run.mjs",
     "seed": "node scripts/seed.js",
     "start:prod": "NODE_ENV=production node server.js"

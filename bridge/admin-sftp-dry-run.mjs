@@ -21,8 +21,12 @@ export async function runAdminSftpDryRun({ env = process.env, createAgent = () =
   let result;
   let primaryError;
   let connectionClosed = false;
+  // Only retain the three public, non-secret connection facts which the admin
+  // diagnostic endpoint is permitted to return on failure.
+  const connectionInfo = { remoteInstanceFound: null, remoteRoot: null, remoteRootExists: null };
   try {
     agent = await createAgent();
+    if (agent?.remoteRoot === '/instance/OblivionControl') connectionInfo.remoteRoot = agent.remoteRoot;
     const connection = await timeout(agent.connect(), timeoutMs).catch((error) => {
       if (error instanceof AdminSftpDryRunError) {
         const diagnostic = agent?.diagnosticSnapshot?.() || { stage: 'SSH_HANDSHAKE', hostKeyVerify: 'NOT_REACHED', elapsedMs: timeoutMs };
@@ -31,6 +35,9 @@ export async function runAdminSftpDryRun({ env = process.env, createAgent = () =
       const diagnostic = agent?.diagnosticSnapshot?.() || { stage: 'SSH_HANDSHAKE', hostKeyVerify: 'NOT_REACHED', elapsedMs: timeoutMs };
       throw new AdminSftpDryRunError(String(error?.code || 'SFTP_DRY_RUN_FAILED'), 502, diagnostic);
     });
+    connectionInfo.remoteInstanceFound = connection.instanceExists === true ? true : connection.instanceExists === false ? false : null;
+    connectionInfo.remoteRoot = connection.root === '/instance/OblivionControl' ? connection.root : connectionInfo.remoteRoot;
+    connectionInfo.remoteRootExists = connection.rootExists === true ? true : connection.rootExists === false ? false : null;
     if (agent.hostKeyVerified !== true) throw new AdminSftpDryRunError('HOST_KEY_MISMATCH', 502, agent.diagnosticSnapshot?.());
     if (connection.rootExists === true) {
       agent.diagnosticStart?.('REMOTE_ROOT_LIST');
@@ -54,6 +61,9 @@ export async function runAdminSftpDryRun({ env = process.env, createAgent = () =
     const error = primaryError instanceof AdminSftpDryRunError ? primaryError : new AdminSftpDryRunError(String(primaryError?.code || 'SFTP_DRY_RUN_FAILED'), 502, agent?.diagnosticSnapshot?.() || { stage: 'SSH_HANDSHAKE', hostKeyVerify: 'NOT_REACHED', elapsedMs: timeoutMs });
     if (!error.diagnostic) error.diagnostic = agent?.diagnosticSnapshot?.() || { stage: 'SSH_HANDSHAKE', hostKeyVerify: 'NOT_REACHED', elapsedMs: timeoutMs };
     error.connectionClosed = connectionClosed;
+    error.remoteInstanceFound = connectionInfo.remoteInstanceFound;
+    error.remoteRoot = connectionInfo.remoteRoot;
+    error.remoteRootExists = connectionInfo.remoteRootExists;
     throw error;
   }
   result.connectionClosed = connectionClosed;

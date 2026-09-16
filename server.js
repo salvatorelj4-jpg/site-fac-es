@@ -4360,7 +4360,7 @@ async function handleObcAdminSftpDryRun(req,res){
     } catch (error) {
         const code = ['DRY_RUN_REQUIRED','CONFIG_INVALID','SFTP_DRY_RUN_BUSY','SFTP_DRY_RUN_TIMEOUT','TCP_TIMEOUT','HOST_KEY_MISMATCH','AUTH_FAILED','SFTP_SUBSYSTEM_FAILED','REMOTE_PATH_NOT_FOUND','SFTP_DRY_RUN_FAILED'].includes(error?.code) ? error.code : 'SFTP_DRY_RUN_FAILED';
         const diagnostic = error?.diagnostic && typeof error.diagnostic === 'object' ? error.diagnostic : { stage:'CONFIG_VALIDATION', hostKeyVerify:'NOT_REACHED', elapsedMs:0 };
-        return res.status(Number(error?.status) || 503).json({ ok:false, code, stage:diagnostic.stage, elapsedMs:Number(diagnostic.elapsedMs)||0, hostKeyVerify:diagnostic.hostKeyVerify || 'NOT_REACHED', diagnosticStages:Array.isArray(diagnostic.stages) ? diagnostic.stages : [], writes:0, filesChanged:0, connectionClosed:error?.connectionClosed === true });
+        return res.status(Number(error?.status) || 503).json({ ok:false, code, stage:diagnostic.stage, elapsedMs:Number(diagnostic.elapsedMs)||0, hostKeyVerify:diagnostic.hostKeyVerify || 'NOT_REACHED', remoteInstanceFound:error?.remoteInstanceFound === true ? true : error?.remoteInstanceFound === false ? false : null, remoteRoot:error?.remoteRoot === '/instance/OblivionControl' ? error.remoteRoot : null, remoteRootExists:error?.remoteRootExists === true ? true : error?.remoteRootExists === false ? false : null, diagnosticStages:Array.isArray(diagnostic.stages) ? diagnostic.stages : [], writes:0, filesChanged:0, connectionClosed:error?.connectionClosed === true });
     } finally { obcAdminSftpDryRunRequest = false; }
 }
 app.post('/api/oblivion/admin/sftp-dry-run', auth, requireObcCapability('oblivion:manage'), handleObcAdminSftpDryRun);
