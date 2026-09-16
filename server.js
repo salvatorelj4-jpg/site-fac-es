@@ -13,6 +13,7 @@ const { z } = require('zod');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const { pathToFileURL } = require('url');
+const { computeRuntimeStatus } = require('./bridge/runtime-status.js');
 
 // ==========================================
 // ENVIRONMENT VALIDATION
@@ -25,6 +26,8 @@ const DB_PATH = process.env.DB_PATH ? path.resolve(process.env.DB_PATH) : path.j
 const UPLOAD_DIR = process.env.UPLOAD_DIR ? path.resolve(process.env.UPLOAD_DIR) : path.join(DATA_DIR, 'uploads');
 const OBC_DATA_ROOT = path.join(DATA_DIR, 'oblivion-control');
 const OBC_BRIDGE_TOKEN = process.env.OBC_BRIDGE_TOKEN || '';
+const OBC_SERVER_ID = String(process.env.OBC_SERVER_ID || 'oblivion-production');
+const OBC_WORKSHOP_ID = String(process.env.OBC_WORKSHOP_ID || '3802398240');
 if (NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('CHANGE_ME'))) {
     throw new Error('FATAL ERROR: JWT_SECRET must be securely set in production.');
 }
@@ -521,8 +524,8 @@ async function initDb() {
             const obcSettings = [
                 ['obc.release_candidate','V1.6 RC1.2'],
                 ['obc.bridge_status','NOT_CONNECTED'],
-                ['obc.qonzer_status','MOD_INSTALADO'],
-                ['obc.workshop_status','PUBLICADO'],
+                ['obc.qonzer_status','UNKNOWN'],
+                ['obc.workshop_status','PUBLISHED'],
                 ['obc.prices_active','false'],
                 ['obc.catalog_overrides_default','false']
             ];
@@ -920,13 +923,30 @@ function createOblivionControl() {
         file(id,key){if(!obcId(key))throw Object.assign(new Error('RELEASE_FILE_UNKNOWN_KEY'),{statusCode:404});const entry=this.manifest(id).files.find(x=>x.targetKey===key);if(!entry||!Object.hasOwn(OBC_PATHS,entry.releasePath))throw Object.assign(new Error('RELEASE_FILE_UNKNOWN_KEY'),{statusCode:404});const bytes=fs.readFileSync(path.join(releasesRoot,id,entry.releasePath));if(obcHash(bytes)!==entry.sha256)throw new Error('RELEASE_FILE_HASH_MISMATCH');return {entry,bytes};},
         requestRollback(id){const record=getRecord(id);record.status='ROLLBACK_PENDING';record.rollbackRequestedAt=new Date().toISOString();saveRecord(record);return record;},
         pending(){return listRecords().filter(x=>x.status==='ROLLBACK_PENDING');},
-        status(){const s=fs.existsSync(statusFile)?obcReadJson(statusFile):{status:'OFFLINE'};const online=s.heartbeatAt&&Date.now()-Date.parse(s.heartbeatAt)<=120000;return {...s,online:!!online,connection:online?'ONLINE':'OFFLINE'};},
-        heartbeat(input){const s={serverId:String(input.serverId||process.env.OBC_SERVER_ID||'oblivion-production'),currentReleaseId:input.currentReleaseId||null,status:input.status||'UNKNOWN',lastApply:input.lastApply||null,rolledBackReleaseId:input.rolledBackReleaseId||null,restoredReleaseId:input.restoredReleaseId||null,completedAt:input.completedAt||null,heartbeatAt:new Date().toISOString()};obcAtomicWrite(statusFile,JSON.stringify(s,null,2)+'\n');if(s.rolledBackReleaseId){const r=getRecord(s.rolledBackReleaseId);r.status='ROLLED_BACK';r.rolledBackAt=s.completedAt||s.heartbeatAt;r.restoredReleaseId=s.restoredReleaseId;saveRecord(r);}return s;}
+        status(){const s=fs.existsSync(statusFile)?obcReadJson(statusFile):{status:'OFFLINE'};const heartbeatAt=typeof s.heartbeatAt==='string'?Date.parse(s.heartbeatAt):NaN;const online=Number.isFinite(heartbeatAt)&&Date.now()-heartbeatAt<=120000;return {...s,online,connection:online?'ONLINE':'OFFLINE'};},
+        runtimeStatus(){const s=fs.existsSync(statusFile)?obcReadJson(statusFile):{};return computeRuntimeStatus(s,Date.now(),OBC_WORKSHOP_ID);},
+        heartbeat(input){const previous=fs.existsSync(statusFile)?obcReadJson(statusFile):{};const s={...previous,serverId:String(input.serverId||OBC_SERVER_ID),currentReleaseId:input.currentReleaseId||null,status:input.status||'UNKNOWN',lastApply:input.lastApply||null,rolledBackReleaseId:input.rolledBackReleaseId||null,restoredReleaseId:input.restoredReleaseId||null,completedAt:input.completedAt||null,heartbeatAt:new Date().toISOString()};obcAtomicWrite(statusFile,JSON.stringify(s,null,2)+'\n');if(s.rolledBackReleaseId){const r=getRecord(s.rolledBackReleaseId);r.status='ROLLED_BACK';r.rolledBackAt=s.completedAt||s.heartbeatAt;r.restoredReleaseId=s.restoredReleaseId;saveRecord(r);}return s;},
+        runtimeHeartbeat(input){const previous=fs.existsSync(statusFile)?obcReadJson(statusFile):{};const now=new Date().toISOString();const s={...previous,serverId:input.serverId,serverOnline:input.serverOnline,modInstalled:input.modInstalled,modLoaded:input.modLoaded,modVersion:input.modVersion||null,workshopId:input.workshopId,profileReady:input.profileReady,reportedAt:input.reportedAt,runtimeHeartbeatAt:now,heartbeatAt:now};obcAtomicWrite(statusFile,JSON.stringify(s,null,2)+'\n');return this.runtimeStatus();}
     };
 }
 const obc = createOblivionControl();
 function requireObcCapability(capability) { return async (req,res,next) => { if(req.user.role==='super_admin')return next(); const caps=await getEffectiveCapabilities(req.user.id,req.user.role); if(!caps.includes(capability))return res.status(403).json({error:'Forbidden: Missing Oblivion capability'}); next(); }; }
 function obcBridgeAuth(req,res,next) { const supplied=req.headers['x-obc-bridge-token']; const expected=OBC_BRIDGE_TOKEN; if(!expected||typeof supplied!=='string'||Buffer.byteLength(supplied)!==Buffer.byteLength(expected)||!crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected)))return res.status(401).json({error:'BRIDGE_AUTH_REQUIRED'});next(); }
+function parseRuntimeHeartbeat(body) {
+    const parsed = z.object({
+        serverId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$/),
+        serverOnline: z.boolean(),
+        modInstalled: z.boolean(),
+        modLoaded: z.boolean(),
+        modVersion: z.string().max(64).regex(/^[A-Za-z0-9._+-]+$/).nullable().optional(),
+        workshopId: z.string().regex(/^\d{1,20}$/),
+        profileReady: z.boolean(),
+        reportedAt: z.string().refine(value => Number.isFinite(Date.parse(value)), 'reportedAt must be an ISO timestamp')
+    }).strict().parse(body);
+    if (parsed.serverId !== OBC_SERVER_ID) throw Object.assign(new Error('RUNTIME_SERVER_ID_MISMATCH'), { statusCode: 400 });
+    if (parsed.workshopId !== OBC_WORKSHOP_ID) throw Object.assign(new Error('RUNTIME_WORKSHOP_ID_MISMATCH'), { statusCode: 400 });
+    return { ...parsed, modVersion: parsed.modVersion || null };
+}
 let obcSftpDryRunModule;
 let obcSftpDryRunLoading;
 async function runObcAdminSftpDryRun() {
@@ -3183,14 +3203,14 @@ app.get('/api/admin/oblivion/overview', auth, requireCapability('server:panel','
         const latestRelease = await dbGet(`SELECT id,release_code,status,created_at,approved_at FROM oblivion_releases ORDER BY id DESC LIMIT 1`);
         const tradeEvents = await dbGet(`SELECT COUNT(*) count FROM commerce_transactions`);
         const bridgeConfigured = !!String(process.env.OBLIVION_BRIDGE_URL || '').trim();
-        const bridgeLive = obc.status().online === true;
+        const runtime = obc.runtimeStatus();
         res.json({
             integration:{
                 releaseCandidate: settings['obc.release_candidate']?.value || 'V1.6',
-                bridgeStatus: bridgeLive ? 'CONNECTED' : 'AGUARDANDO_CONEXAO',
+                bridgeStatus: runtime.bridge.status === 'CONNECTED' ? 'CONNECTED' : 'AGUARDANDO_CONEXAO',
                 bridgeConfigured,
-                qonzerStatus: settings['obc.qonzer_status']?.value === 'NOT_INSTALLED' ? 'MOD_INSTALADO' : (settings['obc.qonzer_status']?.value || 'MOD_INSTALADO'),
-                workshopStatus: settings['obc.workshop_status']?.value === 'NOT_PUBLISHED' ? 'PUBLICADO' : (settings['obc.workshop_status']?.value || 'PUBLICADO'),
+                qonzerStatus: runtime.qonzer.status,
+                workshopStatus: runtime.workshop.status,
                 pricesActive: String(settings['obc.prices_active']?.value || 'false').toLowerCase()==='true',
                 catalogOverridesDefault: String(settings['obc.catalog_overrides_default']?.value || 'false').toLowerCase()==='true'
             },
@@ -4347,10 +4367,12 @@ app.get('/api/oblivion/releases/latest', obcBridgeAuth, (req,res)=>res.json(obc.
 app.get('/api/oblivion/releases/:releaseId', auth, requireObcCapability('oblivion:read'), (req,res,next)=>{try{res.json(obc.getRecord(req.params.releaseId))}catch(e){next(e)}});
 app.post('/api/oblivion/releases/:releaseId/rollback-request', auth, requireObcCapability('oblivion:publish'), (req,res,next)=>{try{res.status(202).json(obc.requestRollback(req.params.releaseId))}catch(e){next(e)}});
 app.get('/api/oblivion/bridge/status', auth, requireObcCapability('oblivion:read'), (req,res)=>res.json(obc.status()));
+app.get('/api/oblivion/admin/runtime-status', auth, requireObcCapability('oblivion:read'), (req,res)=>res.json(obc.runtimeStatus()));
 app.get('/api/oblivion/bridge/releases/:releaseId/manifest', obcBridgeAuth, (req,res,next)=>{try{res.json(obc.manifest(req.params.releaseId))}catch(e){next(e)}});
 app.get('/api/oblivion/bridge/releases/:releaseId/files/:fileKey', obcBridgeAuth, (req,res,next)=>{try{const file=obc.file(req.params.releaseId,req.params.fileKey);res.set('Content-Type','application/json; charset=utf-8');res.set('X-OBC-SHA256',file.entry.sha256);res.send(file.bytes)}catch(e){next(e)}});
 app.get('/api/oblivion/bridge/rollback-requests', obcBridgeAuth, (req,res)=>res.json({requests:obc.pending()}));
 app.post('/api/oblivion/bridge/heartbeat', obcBridgeAuth, (req,res,next)=>{try{res.json(obc.heartbeat(req.body||{}))}catch(e){next(e)}});
+app.post('/api/oblivion/bridge/runtime-heartbeat', obcBridgeAuth, (req,res,next)=>{try{res.json(obc.runtimeHeartbeat(parseRuntimeHeartbeat(req.body||{})))}catch(e){if(e?.name==='ZodError'||e?.code==='RUNTIME_SERVER_ID_MISMATCH'||e?.code==='RUNTIME_WORKSHOP_ID_MISMATCH')return res.status(400).json({error:'INVALID_RUNTIME_HEARTBEAT'});next(e)}});
 let obcAdminSftpDryRunRequest = false;
 async function handleObcAdminSftpDryRun(req,res){
     if (obcAdminSftpDryRunRequest) return res.status(409).json({ ok:false, error:'SFTP_DRY_RUN_BUSY', status:'FAIL' });
