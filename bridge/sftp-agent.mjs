@@ -141,14 +141,48 @@ export class SftpBridgeAgent {
     this.persistentState = stateStore ? null : new PersistentStateStore({ filePath: stateFile, serverId: this.serverId });
     this.connected = false;
     this.hostKeyVerified = false;
+    this.diagnostic = { stage: 'CONFIG_VALIDATION', stages: [], hostKeyVerify: 'NOT_REACHED', startedAt: null, finishedAt: null };
     this.applyState = 'IDLE';
   }
 
   apiHeaders() { return { Authorization: `Bearer ${this.token}`, 'X-OBC-Server-Id': this.serverId }; }
 
+  diagnosticStart(stage) {
+    const now = Date.now();
+    const previous = this.diagnostic.stages.at(-1);
+    if (previous && !previous.finishedAt) { previous.finishedAt = new Date(now).toISOString(); previous.durationMs = now - previous.startedAtMs; delete previous.startedAtMs; }
+    if (!this.diagnostic.startedAt) this.diagnostic.startedAt = new Date(now).toISOString();
+    this.diagnostic.stage = stage;
+    this.diagnostic.stages.push({ stage, startedAt: new Date(now).toISOString(), startedAtMs: now });
+  }
+
+  diagnosticFinish() {
+    const now = Date.now();
+    const current = this.diagnostic.stages.at(-1);
+    if (current && !current.finishedAt) { current.finishedAt = new Date(now).toISOString(); current.durationMs = now - current.startedAtMs; delete current.startedAtMs; }
+    this.diagnostic.finishedAt = new Date(now).toISOString();
+  }
+
+  diagnosticSnapshot() {
+    return { stage: this.diagnostic.stage, stages: this.diagnostic.stages.map(({ stage, startedAt, finishedAt, durationMs }) => ({ stage, startedAt, ...(finishedAt ? { finishedAt, durationMs } : {}) })), hostKeyVerify: this.diagnostic.hostKeyVerify, elapsedMs: this.diagnostic.startedAt ? Math.max(0, Date.now() - Date.parse(this.diagnostic.startedAt)) : 0 };
+  }
+
+  classifyConnectError(error) {
+    const message = String(error?.message || '').toLowerCase();
+    const code = String(error?.code || '').toUpperCase();
+    if (code === 'ETIMEDOUT' || code === 'ECONNREFUSED' || code === 'ENETUNREACH' || code === 'EHOSTUNREACH' || message.includes('timed out') || message.includes('timeout')) return { code: 'TCP_TIMEOUT', stage: 'TCP_CONNECT' };
+    if (this.diagnostic.hostKeyVerify === 'FAIL' || (!this.hostKeyVerified && (message.includes('host') || message.includes('fingerprint') || message.includes('verif')))) return { code: 'HOST_KEY_MISMATCH', stage: 'HOST_KEY_VERIFY' };
+    if (code.includes('AUTH') || message.includes('authentication') || message.includes('all configured authentication methods failed') || message.includes('permission denied')) return { code: 'AUTH_FAILED', stage: 'AUTHENTICATION' };
+    if (message.includes('subsystem') || message.includes('sftp')) return { code: 'SFTP_SUBSYSTEM_FAILED', stage: 'SFTP_SUBSYSTEM' };
+    return { code: 'SFTP_DRY_RUN_FAILED', stage: this.diagnostic.stage === 'TCP_CONNECT' ? 'SSH_HANDSHAKE' : this.diagnostic.stage };
+  }
+
   async connect() {
+    this.diagnostic = { stage: 'CONFIG_VALIDATION', stages: [], hostKeyVerify: 'NOT_REACHED', startedAt: null, finishedAt: null };
+    this.diagnosticStart('CONFIG_VALIDATION');
     if (!this.transport) this.transport = await createSsh2SftpTransport();
     if (!this.hostFingerprint && process.env.NODE_ENV !== 'test') throw new Error('SFTP_HOST_FINGERPRINT_REQUIRED');
+    this.diagnosticStart('SSH_HANDSHAKE');
     try {
       // Omit hostHash so ssh2 supplies the raw host-key Buffer; we compute the
       // OpenSSH-compatible SHA256:<base64> fingerprint ourselves.
@@ -157,17 +191,27 @@ export class SftpBridgeAgent {
     } catch (error) {
       this.connected = false;
       try { await this.transport.end?.(); } catch { /* best effort close after partial connect */ }
+      const classified = this.classifyConnectError(error);
+      this.diagnostic.stage = classified.stage;
+      error.code = classified.code;
       throw error;
     }
-    const instanceExists = Boolean(await this.transport.exists('/instance'));
-    const rootExists = Boolean(await this.transport.exists(this.remoteRoot));
-    if (!instanceExists) throw new Error('REMOTE_INSTANCE_NOT_FOUND');
+    this.diagnosticStart('SFTP_SUBSYSTEM');
+    let instanceExists;
+    try { instanceExists = Boolean(await this.transport.exists('/instance')); } catch (error) { error.code = 'SFTP_SUBSYSTEM_FAILED'; throw error; }
+    this.diagnosticStart('REMOTE_ROOT_STAT');
+    let rootExists;
+    try { rootExists = Boolean(await this.transport.exists(this.remoteRoot)); } catch (error) { error.code = 'REMOTE_PATH_NOT_FOUND'; throw error; }
+    if (!instanceExists) { const error = new Error('REMOTE_INSTANCE_NOT_FOUND'); error.code = 'REMOTE_PATH_NOT_FOUND'; this.diagnostic.stage = 'INSTANCE_STAT'; throw error; }
+    this.diagnosticFinish();
     return { instanceExists, rootExists, root: this.remoteRoot, dryRun: this.dryRun };
   }
 
   verifyHostKey(actual) {
+    this.diagnosticStart('HOST_KEY_VERIFY');
     const verified = this.hostFingerprint ? normalizeFingerprint(actual) === this.hostFingerprint : process.env.NODE_ENV === 'test';
     this.hostKeyVerified = verified;
+    this.diagnostic.hostKeyVerify = verified ? 'PASS' : 'FAIL';
     return verified;
   }
 
