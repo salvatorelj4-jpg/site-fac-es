@@ -24,6 +24,6 @@ test('route remains JWT/capability protected and does not consume browser SFTP f
   assert.notEqual(routeStart, -1);
   const route = source.slice(routeStart, routeStart + 1800);
   assert.match(route, /app\.post\('\/api\/oblivion\/admin\/sftp-dry-run', auth, requireObcCapability\('oblivion:manage'\)/);
-  assert.match(route, /runObcAdminSftpDryRun\(\)/);
+  assert.match(route, /handleObcAdminSftpDryRun/);
   assert.doesNotMatch(route, /req\.body\.(host|port|username|password|remoteRoot|fingerprint)/);
 });
