@@ -10,6 +10,7 @@
     "test:oblivion": "node --test tests/sftp-agent.test.mjs tests/oblivion-v171.test.js",
     "test:skad-migration": "node --test tests/skad-migration.test.mjs",
     "test:runtime-status": "node --test tests/runtime-status.test.cjs",
+    "test:trader-release": "node --test tests/trader-release.test.mjs",
     "test:sftp-dry-run": "node --test tests/sftp-dry-run-runner.test.mjs",
     "test:sftp-diagnostics": "node --test tests/sftp-dry-run-diagnostics.test.mjs",
     "test:sftp-405-diagnostic": "node --test tests/sftp-405-diagnostic.test.mjs",
