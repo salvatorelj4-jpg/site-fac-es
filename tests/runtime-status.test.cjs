@@ -61,3 +61,32 @@ test('AUTO_REFRESH_UI', () => {
     assert.match(source, /setInterval\([^,]+,15000\)/);
   }
 });
+
+test('POLLING_SINGLE_TIMER_AND_NO_OVERLAP_GUARDS', () => {
+  const commerce = fs.readFileSync('public/admin-oblivion-control.html', 'utf8');
+  const overview = fs.readFileSync('public/admin-oblivion.html', 'utf8');
+  const central = fs.readFileSync('public/admin.html', 'utf8');
+  for (const source of [commerce, overview]) {
+    assert.match(source, /runtimeStatusTimer=null/);
+    assert.match(source, /if\(runtimeStatusTimer\)clearInterval\(runtimeStatusTimer\)/);
+    assert.match(source, /runtimeStatusInFlight/);
+    assert.match(source, /if\(!runtimeStatusInFlight\)load/);
+    assert.match(source, /beforeunload/);
+  }
+  assert.match(central, /runtimeStatusTimer=null,runtimeStatusInFlight=false/);
+  assert.match(central, /if\(!runtimeStatusTimer\)runtimeStatusTimer=setInterval/);
+  assert.match(central, /if\(runtimeStatusInFlight\)return/);
+});
+
+test('LAST_VALID_STATE_PRESERVED_ON_TEMPORARY_FAILURE', () => {
+  const commerce = fs.readFileSync('public/admin-oblivion-control.html', 'utf8');
+  const overview = fs.readFileSync('public/admin-oblivion.html', 'utf8');
+  const central = fs.readFileSync('public/admin.html', 'utf8');
+  for (const source of [commerce, overview, central]) {
+    assert.match(source, /lastValidRuntimeStatus/);
+    assert.match(source, /DADOS TEMPORARIAMENTE INDISPONÍVEIS/);
+  }
+  assert.match(commerce, /renderRuntimeStatus\(lastValidRuntimeStatus\|\|/);
+  assert.match(overview, /renderRuntimeStatus\(lastValidRuntimeStatus\|\|/);
+  assert.match(central, /if\(!lastValidRuntimeStatus\)/);
+});
